@@ -152,8 +152,11 @@ def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tu
         title = str(row["title"])
         job_url = str(row["job_url"])
 
-        # Check if job_url already exists
-        cursor.execute("SELECT 1 FROM job_details WHERE job_url = ?", (job_url,))
+        # Check if job_url already exists for this user
+        cursor.execute(
+            "SELECT 1 FROM job_details WHERE job_url = ? AND owning_user = ?",
+            (job_url, owning_user),
+        )
         if cursor.fetchone():
             job_exists_count += 1
             logger.info(f"Skipping duplicate job: {job_url}")
