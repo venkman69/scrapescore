@@ -1,4 +1,4 @@
-# Job Finder
+# ScrapeScore
 
 **Disclaimer**: This is a prototype project and not production ready. Use at your own risk.
 
