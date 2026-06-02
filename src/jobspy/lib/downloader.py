@@ -7,7 +7,7 @@ from playwright_stealth import Stealth
 import time
 import re
 import traceback
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, parse_qs
 import cloudscraper
 import threading
 import fcntl
@@ -221,51 +221,49 @@ def download_job_from_linkedin(url: str, headless: bool = True, chrome_user_data
         return html_content
 
 
-def download_job_from_indeed(url: str, headless: bool = True, chrome_user_data_dir: str | None = None) -> str:
-    indeed_selector = "#root h1, #jobDescriptionTitleHeading, #react-native-html-content"
-    scraper = cloudscraper.create_scraper()
-    response = scraper.get(url)
-    logger.info(f"Indeed URL: {url} - Status Code: {response.status_code}")
+def _extract_indeed_job_key(url: str) -> str | None:
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    return (params.get("jk") or params.get("vjk") or [None])[0]
+
+
+def _fetch_indeed_description(job_key: str) -> str | None:
+    """Fetch job description from Indeed using the mobile app user-agent to get LD+JSON."""
+    from jobspy.indeed.constant import api_headers
+    import urllib3
+    urllib3.disable_warnings()
+
+    url = f"https://www.indeed.com/viewjob?jk={job_key}"
+    headers = {
+        "user-agent": api_headers["user-agent"],
+        "accept": "text/html,application/xhtml+xml",
+        "accept-language": "en-US,en;q=0.9",
+    }
     try:
-        response.raise_for_status()
-    except Exception:
-        try:
-            html_str = download_job_with_playwright(
-                url,
-                selector='script[type="application/ld+json"]',
-                selector_type="css",
-                headless=False,
-                chrome_user_data_dir=chrome_user_data_dir,
-            )
-            if "Cloudflare Errors" in html_str:
-                logger.error(f"Cloudflare Errors for Indeed URL: {url}")
-                return ""
-            bs_obj = BeautifulSoup(html_str, "html.parser")
-            ld_script = bs_obj.find("script", type="application/ld+json")
-            if ld_script:
-                ld_json = ld_script.string
-                if ld_json:
-                    ld_data = json.loads(ld_json)
-                    if isinstance(ld_data, dict) and "description" in ld_data:
-                        return ld_data["description"]
-            return ""
-        except Exception as pw_e:
-            logger.error(f"Error with Playwright fallback for Indeed: {pw_e}")
-            return ""
-    bs_obj = BeautifulSoup(response.text, "html.parser")
-    ld_script = bs_obj.find("script", type="application/ld+json")
-    if ld_script:
-        try:
-            ld_json = ld_script.string
-            if ld_json:
-                ld_data = json.loads(ld_json)
-                if isinstance(ld_data, dict) and "description" in ld_data:
-                    return ld_data["description"]
-        except Exception as e:
-            logger.warning(f"Error parsing LD+JSON: {e}")
-    job_description_els = bs_obj.select(indeed_selector)
-    if job_description_els:
-        return "".join(str(el) for el in job_description_els)
+        resp = requests.get(url, headers=headers, timeout=15, verify=False, allow_redirects=True)
+        if not resp.ok:
+            logger.warning(f"Indeed viewjob returned {resp.status_code} for key: {job_key}")
+            return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        ld_script = soup.find("script", type="application/ld+json")
+        if ld_script:
+            ld_data = json.loads(ld_script.string)
+            return ld_data.get("description")
+    except Exception as e:
+        logger.warning(f"Indeed mobile fetch failed for {job_key}: {e}")
+    return None
+
+
+def download_job_from_indeed(url: str, headless: bool = True, chrome_user_data_dir: str | None = None) -> str:
+    job_key = _extract_indeed_job_key(url)
+    if not job_key:
+        logger.error(f"Could not extract job key from Indeed URL: {url}")
+        return ""
+    description = _fetch_indeed_description(job_key)
+    if description:
+        logger.info(f"Indeed mobile fetch succeeded for key: {job_key}")
+        return description
+    logger.error(f"Indeed mobile fetch returned no description for key: {job_key}")
     return ""
 
 
