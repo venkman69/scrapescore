@@ -10,6 +10,8 @@ The AI scoring mechanism was very expensive in estimation due to upwards of 50Kb
 
 The system is setup on a linux server with xvfb, fluxbox and x11vnc so that I can see the browser execution of gemini for debugging. You don't have to run it with headless=False most of the time or at all.
 
+![ScrapeScore UI](.github/images/scrapescore_ui.png)
+
 ---
 
 ## Prerequisites
