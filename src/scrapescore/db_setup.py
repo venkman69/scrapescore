@@ -121,15 +121,6 @@ def create_job_details_table(cursor):
         )
     """)
 
-    # Remove any pre-existing (job_url, owning_user) duplicates before enforcing
-    # the unique index — keeps the latest row (highest id) for each pair.
-    cursor.execute("""
-        DELETE FROM job_details
-        WHERE id NOT IN (
-            SELECT MAX(id) FROM job_details GROUP BY job_url, owning_user
-        )
-    """)
-
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_job_url_owning_user
         ON job_details(job_url, owning_user)
