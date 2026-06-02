@@ -206,19 +206,33 @@ def download_job_from_workday(url: str, headless: bool = True, chrome_user_data_
     )
 
 
+_LINKEDIN_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
 def download_job_from_linkedin(url: str, headless: bool = True, chrome_user_data_dir: str | None = None) -> str:
-    linkedin_selector = "button.show-more-less-html__button--more"
-    html_content = download_job_with_playwright(
-        url, selector=linkedin_selector, selector_type="css", headless=headless,
-        chrome_user_data_dir=chrome_user_data_dir,
-    )
     try:
-        content_soup = BeautifulSoup(html_content, "html.parser")
-        job_desc_tag = content_soup.find("h2", string="About the job").parent.parent
-        return job_desc_tag.decode_contents()
-    except Exception:
-        logger.error("LinkedIn page did not have About the Job section, returning full HTML")
-        return html_content
+        resp = requests.get(url, headers=_LINKEDIN_HEADERS, timeout=20)
+        if not resp.ok:
+            logger.warning(f"LinkedIn fetch returned {resp.status_code} for {url}")
+            return ""
+        html_content = resp.text
+    except Exception as e:
+        logger.error(f"LinkedIn fetch failed for {url}: {e}")
+        return ""
+    soup = BeautifulSoup(html_content, "html.parser")
+    desc = soup.find("div", class_="description__text--rich")
+    if desc:
+        return desc.decode_contents()
+    logger.warning(f"LinkedIn page did not have description__text--rich section for {url}")
+    return html_content
 
 
 def _extract_indeed_job_key(url: str) -> str | None:
