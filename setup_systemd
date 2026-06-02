@@ -103,6 +103,18 @@ cmd_stop() {
     done
 }
 
+cmd_status() {
+    for timer in $(get_timers); do
+        yellow_echo "=== $timer ==="
+        systemctl --user status "$timer" --no-pager
+    done
+
+    for service in $(get_services); do
+        yellow_echo "=== $service ==="
+        systemctl --user status "$service" --no-pager
+    done
+}
+
 cmd_remove() {
     cmd_stop
 
@@ -134,13 +146,15 @@ case "${1:-}" in
     start)  cmd_start ;;
     stop)   cmd_stop ;;
     remove) cmd_remove ;;
+    status) cmd_status ;;
     *)
-        echo "Usage: $(basename "$0") <setup|start|stop|remove>"
+        echo "Usage: $(basename "$0") <setup|start|stop|remove|status>"
         echo ""
         echo "  setup   Create symlinks, enable linger, enable and start all units"
         echo "  start   Start all timers and services without a paired timer"
         echo "  stop    Stop all timers and services"
         echo "  remove  Stop, disable, and remove all unit symlinks"
+        echo "  status  Show status of all timers and services"
         exit 1
         ;;
 esac
