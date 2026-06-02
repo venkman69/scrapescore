@@ -1,0 +1,26 @@
+[Unit]
+Description=ScrapeScore Job Finder Service
+Wants=network-online.target
+After=network-online.target
+After=xvfb.service
+After=fluxbox.service
+After=x11vnc.service
+
+[Service]
+Type=oneshot
+WatchdogSec=900
+# Replace /path/to/your/backup_script.sh with the actual path to your script
+Environment=DISPLAY=:99
+ExecStart=%h/git/scrapescore/bin/run_job_finder.sh
+TimeoutStartSec=30min
+# kill process group including playwright etc.
+KillMode=control-group
+# Hard kill after
+FinalKillSignal=SIGKILL
+
+# # Optional: Set a user to run the script as (e.g., a non-root user for security)
+#User=venkman
+#Group=venkman
+#
+[Install]
+WantedBy=default.target

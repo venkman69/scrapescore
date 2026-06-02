@@ -1,0 +1,22 @@
+[Unit]
+Description=ScrapeScore UI Service
+Wants=network-online.target
+After=network-online.target
+After=xvfb.service
+After=fluxbox.service
+After=x11vnc.service
+
+
+[Service]
+Type=exec
+# Replace /path/to/your/backup_script.sh with the actual path to your script
+Environment=DISPLAY=:99
+ExecStart=%h/git/scrapescore/bin/run_scrapescore_ui.sh
+
+
+# # Optional: Set a user to run the script as (e.g., a non-root user for security)
+#User=venkman
+#Group=venkman
+#
+[Install]
+WantedBy=default.target

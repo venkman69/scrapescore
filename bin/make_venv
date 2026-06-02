@@ -1,0 +1,12 @@
+#!/bin/bash
+
+SCRIPTDIR=$(readlink -f $(dirname $0))
+. $SCRIPTDIR/run_functions
+cd $SCRIPTDIR/..
+if [ -f .env ]; then
+. ./.env
+else
+echo "No .env found- exittig"
+exit 1
+fi
+makevenv

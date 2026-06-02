@@ -1,0 +1,60 @@
+# job_score/gemini_ai_runner.py — loaded as prompt template file names
+gemini_job_vs_resume_template: "gemini_job_vs_resume_template.md"
+gemini_title_vs_desired_role_template: "gemini_title_vs_desired_role_template.md"
+gemini_job_description_extract_details_template: "gemini_job_description_extract_details_template.md"
+gemini_ats_score_template: "gemini_ats_score_template.md"
+
+
+# job_score/app.py — rendered as Markdown on the home/help page
+# Supports full Markdown formatting.
+help_content: |
+  ## Getting Started
+
+  Welcome to **ScrapeScore Job Finder** — your personal job search assistant.<br>
+  This tool runs scrapers on several sites each hour and runs an ATS scoring simulation using Gemini AI.
+  You can search, save an apply and track jobs and add notes using this site.
+
+  ### 1. Set Up Your Profile
+  Go to **Profiles** (avatar menu → Profiles) and create a profile with your resume.
+  This is used to score how well a job matches your background.
+
+  ### 2. Configure Additional Job Sources
+  Career sites run by companies use Workday, OracleCloud, EightFold as vendors. This configuration allows the scraper
+  to extract from career sites.
+  #### How to setup:
+  * Navigate to the career site, for example https://careers.bankofamerica.com/
+  * Sign up
+  * Click on any job and click apply, and if the URL bar contains 'workday' or 'oraclecloud' - then that is what we need.
+  * Click on the site logo - like "Bank of America" on the top left corner, this should hopefully lead you to search settings.
+  * Configure the search parameters and click on search.
+  * THIS is the URL that this configurator needs. Paste this in the configuration, extract, and save the extraction.
+  Now the hourly job will scrape from Bank of America for  your search words.
+
+  **NOTE:** The following are scraped always:
+    * Marriott (uses oraclecloud underneath, but search is custom via careers.marriott.com)
+    * Google (google jobs search),
+    * ZipRecruiter (does not work well due to scraper blocking),
+    * LinkedIn (works very well)
+    * Indeed (works somewhat well)
+
+  Go to **Config** (avatar menu → Config) to add the job boards and companies you want to search.
+  Each scraper config points to a specific employer portal (Workday, OracleCloud, etc.).
+  You can identify these job site vendors with:
+  * Workday: will have "workday" in the URL.
+  * OracleCloud: will have "oraclecloud" in the URL.
+  * EightFold: will have "pid" in the parameters in the URL.
+  * USAJobs: Single site, copy the url after setting it up at https://www.usajobs.gov/
+
+  ### 3. Score a Job
+  Open **Score** from the top nav, paste a job URL or description, select your profile, and click **Calculate Score**.
+  The app will analyse the match against your resume and return a fit score with details.
+
+  ### 4. Save & Track
+  Use **Saved** to bookmark roles you want to revisit, and **Applied** to track your applications.
+
+  ### 5. Analytics
+  **Analytics** gives you a view across all scored jobs so you can spot trends and prioritise outreach.
+
+  ---
+
+  *Admin: Edit `help_content` in `job_finder_config.yaml` to customise this page.*

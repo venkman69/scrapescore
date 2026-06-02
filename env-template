@@ -1,0 +1,2 @@
+REDIS_PASSWORD="<redis password, leave blank if none>"
+USAJOBS_API_KEY="<usajobs api key>"

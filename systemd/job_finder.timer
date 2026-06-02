@@ -1,0 +1,12 @@
+[Unit]
+Description=Job Finder Timer
+
+[Timer]
+# Defines the schedule using 'man systemd.time' rules
+OnCalendar=hourly
+# Ensures the service runs immediately if the machine was off during the scheduled time
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+

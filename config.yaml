@@ -1,0 +1,44 @@
+redis:
+  host: "localhost"
+  port: 7777
+  db: 0
+
+server:
+  port: 8507
+  base_url_prefix: "/scrapescore"   # e.g. "/scrapescore" for reverse-proxy deployments
+
+
+hours_old: 168 # 1 week
+
+retention_days: 60
+
+site_names:
+  - "workday"
+  - "oraclecloud"
+  - "marriott"
+  - "linkedin"
+  - "indeed"
+  - "eightfold"
+  - "usajobs"
+  - "zip_recruiter"
+  - "google"
+
+ziprecruiter_params:
+  radius: 24
+  days: 29
+  refine_by_employment: "employment_type:full_time"
+  refine_by_experience_level: "mid,senior"
+  refine_by_salary: "159999"
+  refine_by_salary_ceil: ""
+
+
+storage_dirs:
+  resume_storage_dir: "./work/resumes"
+  job_storage_dir: "./work/jobs"
+  logs_dir: "./logs"
+  job_finder_db_path: "./work/job_finder/job_finder.db"
+  chrome_user_data_dir: "./work/google_profile"
+  google_oauth_secrets_path: "./work/job_finder/client_secrets.json"
+
+
+

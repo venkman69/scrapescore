@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrapescore"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "markdownify>=1.2.2",
+    "playwright>=1.55.0",
+    "pytest-playwright>=0.7.0",
+    "markitdown>=0.1.4",
+    "pandas>=2.3.3",
+    "typer>=0.20.0",
+    "pyyaml>=6.0.3",
+    "playwright-stealth>=2.0.1",
+    "protobuf-decoder>=0.4.0",
+    "cloudscraper>=1.2.71",
+    "redis>=7.4.0",
+    "sdnotify>=0.3.2",
+    "python-fasthtml>=0.14.1",
+    "monsterui>=1.0.45",
+    "html-to-markdown==2.22.2",
+    "tls-client>=1.0.1",
+    "pydantic>=2.13.4",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.pyrefly]
+search_path = ["./src"]
+[tool.pyright]
+extraPaths = ["./src"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

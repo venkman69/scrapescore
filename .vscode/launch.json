@@ -1,0 +1,199 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/lib",
+                "PWDEBUG": "0"
+            },
+            "windows": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib",
+                    "PWDEBUG": "0"
+                }
+            }
+        },
+        {
+            "name": "Test Gemini Automation",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/test_gemini.py",
+            "console": "integratedTerminal",
+            "args": [
+                "${input:resumeFile}",
+                "${input:jobDescriptionFile}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib"
+            },
+            "windows": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib",
+                    "PWDEBUG": "0"
+                }
+            }
+        },
+        {
+            "name": "Streamlit app",
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "module": "streamlit",
+            "args": [
+                "run",
+                "src/job_dash.py",
+                "--server.headless",
+                "true",
+                "--server.port",
+                "8501"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}\\src"
+            },
+            "windows": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib",
+                    "PWDEBUG": "0"
+                }
+            }
+        },
+        {
+            "name": "Job Score Streamlit app",
+            "type": "python",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "module": "streamlit",
+            "args": [
+                "run",
+                "src/job_score/job_dash.py",
+                "--server.headless",
+                "true",
+                "--server.port",
+                "8501"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}\\src"
+            }
+        },
+        {
+            "name": "Job Score v2 Streamlit app",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "module": "streamlit",
+            "args": [
+                "run",
+                "src/job_scorev2/job_dash.py",
+                "--server.headless",
+                "true",
+                "--server.port",
+                "8501"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/lib"
+            },
+            "windows": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib",
+                    "PWDEBUG": "0"
+                }
+            }
+        },
+        {
+            "name": "Manual Scraper",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "program": "src/job_scorev2/manual_scraper.py",
+            "justMyCode": true,
+            "args": [
+                "scrape",
+                "${input:scraperSite}",
+                "${input:searchKeyword}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/lib"
+            },
+            "windows": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src;${workspaceFolder}\\src\\lib"
+                }
+            }
+        },
+        {
+            "name": "Test Site Configuration Extractor",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/jobspy/tests/test_site_configuration_extractor.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "test-eightfold-extraction"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "V3 Job Score Dash",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/job_score_v3/app.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        }
+    ],
+    "inputs": [
+        {
+            "id": "resumeFile",
+            "type": "promptString",
+            "description": "Path to the resume file"
+        },
+        {
+            "id": "jobDescriptionFile",
+            "type": "promptString",
+            "description": "Path to the job description file"
+        },
+        {
+            "id": "scraperSite",
+            "type": "pickString",
+            "description": "Job site to scrape",
+            "default": "indeed",
+            "options": [
+                "indeed",
+                "linkedin",
+                "zip_recruiter",
+                "glassdoor",
+                "google",
+                "workday",
+                "oraclecloud",
+                "marriott",
+                "eightfold",
+                "usajobs"
+            ]
+        },
+        {
+            "id": "searchKeyword",
+            "type": "promptString",
+            "description": "Search keyword",
+            "default": "security engineer"
+        }
+    ]
+}

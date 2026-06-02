@@ -1,0 +1,47 @@
+#!/bin/bash
+
+LINK_TARGET=$HOME/.config/systemd/user/
+
+. ~/.bash_colors
+
+
+check_loginctl() {
+    linger=$(loginctl show-user $USER|awk -F= '/Linger/{print $2}')
+    if [ "$linger" = "no" ]; then
+        red_echo "Login ctl was NOT enabled."
+        yellow_echo "Attempting to enable..."
+        sudo loginctl enable-linger $USER
+        if [ $? -eq 0 ]; then
+            green_echo "Login ctl was successfully enabled."
+        else
+            red_echo "Login ctl could not be enabled."
+        fi
+    else
+        green_echo "Login ctl was already enabled."
+    fi
+}
+
+for sysfile in systemd/*; do
+# get the full path to be safe
+    full_path=$(readlink -f "$sysfile")
+    basename_sysfile=$(basename "$sysfile")
+    if [ -L "$LINK_TARGET/$basename_sysfile" ]; then
+        green_echo "Link already exists: $LINK_TARGET/$basename_sysfile"
+    else
+        yellow_echo "Creating new link: $LINK_TARGET/$basename_sysfile"
+        ln -sf "$full_path" "$LINK_TARGET"
+    fi
+done
+check_loginctl
+systemctl --user daemon-reload
+# enable iptv provider refresh
+yellow_echo "crewai resume-job scoring service"
+systemctl --user enable scrapescore_ui.service
+systemctl --user restart scrapescore_ui.service --no-block
+systemctl --user status scrapescore_ui.service --no-pager
+
+yellow_echo "Job Finder retrieval service"
+systemctl --user enable job_finder.timer
+systemctl --user restart job_finder.timer
+systemctl --user status job_finder.timer --no-pager
+systemctl --user status job_finder.service --no-pager

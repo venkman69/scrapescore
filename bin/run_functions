@@ -1,0 +1,107 @@
+#!/bin/bash
+# add path to uv
+export PATH=$PATH:~/.local/bin
+install_uv () {
+    if ! command -v uv &> /dev/null
+    then
+        >&2 echo "Installing uv.."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    else
+        >&2 echo "uv is available $(command -v uv)"
+    fi
+}
+
+
+stop () {
+    if [ -f $pidfile ]
+    then
+        psid=`cat $pidfile`
+        kill  $psid
+        if [ $? -eq 0 ]
+        then
+            >&2 echo "Process killed"
+            rm $pidfile
+        else
+            >&2 echo "Process did not die"
+            exit 1
+        fi
+    fi
+}
+kill_all() {
+    for pid_file in $SCRIPTDIR/../work/.*.pid
+    do
+        pid=$(cat $pid_file)
+        if [ -n "$pid" ] && ps -p $pid > /dev/null; then
+            >&2 echo "Killing process $pid"
+            kill $pid
+        fi
+    done
+}
+status() {
+    if [ -f $pidfile ]
+    then
+        psid=`cat $pidfile`
+        ps -p $psid >/dev/null
+        if [ $? -eq 0 ]
+        then
+            >&2 echo "Process is still running [$psid]"
+            return 0
+        else
+            >&2 echo "Process is not running"
+            return 1
+        fi
+    else
+        >&2 echo "Process is not running"
+        return 1
+    fi
+}
+makevenv() {
+    install_uv
+    >&2 echo "Installing dependencies with uv sync"
+    uv sync
+}
+rebuild() {
+    #set a lock file to prevent multiple rebuilds
+    lockfile="./work/.rebuild.lock"
+    if [ -f $lockfile ]; then
+        >&2 echo "Rebuild already in progress, waiting for it to finish"
+        while [ -f $lockfile ]; do
+            sleep 10
+        done
+        >&2 echo "Rebuild finished"
+        return
+    fi
+    >&2 echo "Rebuilding application"
+    touch $lockfile
+    #kill_all
+    git pull
+    makevenv
+    rm $lockfile
+    >&2 echo "Rebuild complete"
+}
+git_check() {
+    git fetch
+    is_behind=$(git status -uno | grep behind)
+    if [ "$is_behind" = "" ];then
+        >&2 echo "git is up to date"
+        return 0
+    else
+        >&2 echo "Change detected, rebuilding"
+        return 1
+    fi
+}
+
+start() {
+    date
+    git_check
+    if [ $? -eq 1 ]; then
+        >&2 echo "Git was modified, rebuilding"
+        rebuild
+    else
+        makevenv
+    fi
+    status
+    if [ $? -eq 1 ]; then
+        start_this
+    fi
+}

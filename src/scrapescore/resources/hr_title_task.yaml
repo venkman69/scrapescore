@@ -1,0 +1,30 @@
+hr_title_task:
+    description: >
+      # Goal:
+      Review a list of job titles and determine how well it matches the desired role description.
+      Score the job title as high, medium or low based on the match.
+      # Inputs:
+      * Job Titles: 
+        --- START OF JOB TITLES ---
+        {job_titles}
+        --- END OF JOB TITLES ---
+      * Desired Role Description: 
+        --- START OF DESIRED ROLE DESCRIPTION ---
+        {desired_role_description}
+        --- END OF DESIRED ROLE DESCRIPTION ---
+    expected_output: >
+      [
+        {
+          "job_title": "Job Title",
+          "score": "high"
+        },
+        {
+          "job_title": "Job Title",
+          "score": "medium"
+        },
+        {
+          "job_title": "Job Title",
+          "score": "low"
+        },
+      ]
+    agent: hr_title_agent

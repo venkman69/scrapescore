@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__
+*.py[oc]
+build
+dist
+wheels
+*.egg-info
+
+# Virtual environments
+.venv
+work
+logs
+common_infra
+.env
+pw_chrome_profile
+# src/job_scorev2/resources/pw_chrome_profile/
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+.playwright-mcp
+
+# Added by ggshield
+.cache_ggshield
+research
+client_secrets.json
