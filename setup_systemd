@@ -1,47 +1,146 @@
 #!/bin/bash
 
-LINK_TARGET=$HOME/.config/systemd/user/
+SCRIPTDIR=$(readlink -f "$(dirname "$0")")
+SYSTEMD_DIR="$SCRIPTDIR/systemd"
+LINK_TARGET="$HOME/.config/systemd/user"
 
-. ~/.bash_colors
+green_echo()  { echo -e "\033[0;32m$*\033[0m"; }
+yellow_echo() { echo -e "\033[0;33m$*\033[0m"; }
+red_echo()    { echo -e "\033[0;31m$*\033[0m"; }
 
+get_timers() {
+    for f in "$SYSTEMD_DIR"/*.timer; do
+        [ -f "$f" ] && basename "$f"
+    done
+}
+
+get_services() {
+    for f in "$SYSTEMD_DIR"/*.service; do
+        [ -f "$f" ] && basename "$f"
+    done
+}
+
+has_timer() {
+    local stem="${1%.service}"
+    [ -f "$SYSTEMD_DIR/${stem}.timer" ]
+}
 
 check_loginctl() {
-    linger=$(loginctl show-user $USER|awk -F= '/Linger/{print $2}')
+    local linger
+    linger=$(loginctl show-user "$USER" | awk -F= '/Linger/{print $2}')
     if [ "$linger" = "no" ]; then
-        red_echo "Login ctl was NOT enabled."
+        red_echo "loginctl linger was NOT enabled."
         yellow_echo "Attempting to enable..."
-        sudo loginctl enable-linger $USER
-        if [ $? -eq 0 ]; then
-            green_echo "Login ctl was successfully enabled."
+        if sudo loginctl enable-linger "$USER"; then
+            green_echo "loginctl linger successfully enabled."
         else
-            red_echo "Login ctl could not be enabled."
+            red_echo "loginctl linger could not be enabled."
         fi
     else
-        green_echo "Login ctl was already enabled."
+        green_echo "loginctl linger already enabled."
     fi
 }
 
-for sysfile in systemd/*; do
-# get the full path to be safe
-    full_path=$(readlink -f "$sysfile")
-    basename_sysfile=$(basename "$sysfile")
-    if [ -L "$LINK_TARGET/$basename_sysfile" ]; then
-        green_echo "Link already exists: $LINK_TARGET/$basename_sysfile"
-    else
-        yellow_echo "Creating new link: $LINK_TARGET/$basename_sysfile"
-        ln -sf "$full_path" "$LINK_TARGET"
-    fi
-done
-check_loginctl
-systemctl --user daemon-reload
-# enable iptv provider refresh
-yellow_echo "crewai resume-job scoring service"
-systemctl --user enable scrapescore_ui.service
-systemctl --user restart scrapescore_ui.service --no-block
-systemctl --user status scrapescore_ui.service --no-pager
+cmd_setup() {
+    mkdir -p "$LINK_TARGET"
+    for sysfile in "$SYSTEMD_DIR"/*; do
+        [ -f "$sysfile" ] || continue
+        full_path=$(readlink -f "$sysfile")
+        dest="$LINK_TARGET/$(basename "$sysfile")"
+        if [ -L "$dest" ]; then
+            green_echo "Link already exists: $dest"
+        else
+            yellow_echo "Creating link: $dest"
+            ln -sf "$full_path" "$dest"
+        fi
+    done
 
-yellow_echo "Job Finder retrieval service"
-systemctl --user enable job_finder.timer
-systemctl --user restart job_finder.timer
-systemctl --user status job_finder.timer --no-pager
-systemctl --user status job_finder.service --no-pager
+    check_loginctl
+    systemctl --user daemon-reload
+
+    for timer in $(get_timers); do
+        yellow_echo "Enabling and starting timer: $timer"
+        systemctl --user enable "$timer"
+        systemctl --user restart "$timer"
+        systemctl --user status "$timer" --no-pager
+    done
+
+    for service in $(get_services); do
+        if ! has_timer "$service"; then
+            yellow_echo "Enabling and starting service: $service"
+            systemctl --user enable "$service"
+            systemctl --user restart "$service" --no-block
+            systemctl --user status "$service" --no-pager
+        fi
+    done
+}
+
+cmd_start() {
+    systemctl --user daemon-reload
+
+    for timer in $(get_timers); do
+        yellow_echo "Starting timer: $timer"
+        systemctl --user start "$timer"
+    done
+
+    for service in $(get_services); do
+        if ! has_timer "$service"; then
+            yellow_echo "Starting service: $service"
+            systemctl --user start "$service"
+        fi
+    done
+}
+
+cmd_stop() {
+    for timer in $(get_timers); do
+        yellow_echo "Stopping timer: $timer"
+        systemctl --user stop "$timer"
+    done
+
+    for service in $(get_services); do
+        yellow_echo "Stopping service: $service"
+        systemctl --user stop "$service"
+    done
+}
+
+cmd_remove() {
+    cmd_stop
+
+    for timer in $(get_timers); do
+        yellow_echo "Disabling timer: $timer"
+        systemctl --user disable "$timer"
+    done
+
+    for service in $(get_services); do
+        yellow_echo "Disabling service: $service"
+        systemctl --user disable "$service"
+    done
+
+    for sysfile in "$SYSTEMD_DIR"/*; do
+        [ -f "$sysfile" ] || continue
+        dest="$LINK_TARGET/$(basename "$sysfile")"
+        if [ -L "$dest" ]; then
+            yellow_echo "Removing link: $dest"
+            rm "$dest"
+        fi
+    done
+
+    systemctl --user daemon-reload
+    green_echo "All units removed."
+}
+
+case "${1:-}" in
+    setup)  cmd_setup ;;
+    start)  cmd_start ;;
+    stop)   cmd_stop ;;
+    remove) cmd_remove ;;
+    *)
+        echo "Usage: $(basename "$0") <setup|start|stop|remove>"
+        echo ""
+        echo "  setup   Create symlinks, enable linger, enable and start all units"
+        echo "  start   Start all timers and services without a paired timer"
+        echo "  stop    Stop all timers and services"
+        echo "  remove  Stop, disable, and remove all unit symlinks"
+        exit 1
+        ;;
+esac
