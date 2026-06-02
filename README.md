@@ -25,6 +25,8 @@ The system is setup on a linux server with xvfb, fluxbox and x11vnc so that I ca
 ## First-time setup
 
 ### Prerequisites:
+This project is paired with `gemini_ai_runner` project which brokers the AI using Gemini Web (poor man's llm compromise).
+Project is here [https://github.com/venkman69/gemini\_ai\_runner](https://github.com/venkman69/gemini_ai_runner)
 
 ### 1. Configure environment
 
@@ -39,16 +41,16 @@ REDIS_PASSWORD=<if you have setup a redis instance with password then add it her
 ```
 Modify `config.yaml` to your spec. Key items:
 * redis host, port and db
-* Job Score application port
-* Job Score `base_url_prefix` - if you needed to run in reverse proxy environment.
+* Scrape Score application port
+* Scrape Score `base_url_prefix` - if you needed to run in reverse proxy environment.
     * **NOTE**: This must match google OAuth setup.
-* site_names: are the sites that the job_finder will scrape in each run.
+* `site_names`: are the sites that the `job_finder.py` will scrape in each run.
 
 ### 2. Google OAuth credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → Credentials → Create OAuth 2.0 Client ID
 2. Application type: **Web application**
-3. Add authorised redirect URI: `http://localhost:8507/jobscore/redirect`
+3. Add authorised redirect URI: `http://localhost:8507/scrapescore/redirect`
 4. Download the JSON file and save it to the default location: `./work/job_finder/client_secret.json`
 5. If you chose a different location then set the path in `config.yaml`:
    ```yaml
