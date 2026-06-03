@@ -22,6 +22,7 @@ from jobspy.util import create_session
 logger = logging.getLogger("OracleCloud")
 
 _HCM_JOBS_ENDPOINT = "/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
+_HCM_DETAILS_ENDPOINT = "/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
 
 
 class OracleCloud(Scraper):
@@ -90,7 +91,6 @@ class OracleCloud(Scraper):
         job_list: list[JobPost] = []
         base_url = params.get("base_url", "")
         jobs_endpoint = params.get("jobs_endpoint", _HCM_JOBS_ENDPOINT)
-        job_details_endpoint = params.get("job_details_endpoint", _HCM_JOBS_ENDPOINT)
         limit = params.get("limit", 10)
         offset = 0
         total_jobs = None
@@ -144,7 +144,7 @@ class OracleCloud(Scraper):
 
                 for req in req_list:
                     job = self._process_job(
-                        req, base_url, job_details_endpoint, params, company_name
+                        req, base_url, params, company_name
                     )
                     if job:
                         job_list.append(job)
@@ -168,7 +168,6 @@ class OracleCloud(Scraper):
         self,
         req: dict,
         base_url: str,
-        job_details_endpoint: str,
         params: dict,
         company_name: str,
     ) -> JobPost | None:
@@ -176,27 +175,17 @@ class OracleCloud(Scraper):
             job_id = req.get("Id")
             title = req.get("Title") or ""
 
-            details_data = self._fetch_job_details(
-                job_id, base_url, job_details_endpoint, params
-            )
+            item = self._fetch_job_details(job_id, base_url, params) or {}
             job_url = f"{base_url}/hcmUI/CandidateExperience/en/sites/{params.get('siteNumber')}/job/{job_id}"
-
-            # Collect description fields from the detail response (if available) or the search result
-            if details_data:
-                # Path-based returns flat resource; finder-based wraps in {"items": [...]}
-                item = details_data.get("items", [None])[0] if "items" in details_data else details_data
-            else:
-                item = {}
 
             _desc_sources = [
                 item.get("ExternalDescriptionStr"),
-                item.get("InternalResponsibilitiesStr"),
+                item.get("ExternalResponsibilitiesStr"),
                 item.get("ExternalQualificationsStr"),
+                item.get("InternalResponsibilitiesStr"),
                 item.get("InternalQualificationsStr"),
                 item.get("CorporateDescriptionStr"),
-                # also try the same fields from the search result directly
-                req.get("ExternalResponsibilitiesStr"),
-                req.get("ExternalQualificationsStr"),
+                # fallback to short description from search result
                 req.get("ShortDescriptionStr"),
             ]
             description_html = "\n".join([f for f in _desc_sources if f])
@@ -240,14 +229,22 @@ class OracleCloud(Scraper):
             )
             return None
 
-    def _fetch_job_details(self, job_id, base_url, job_details_endpoint, params):
-        url = f"{base_url}{job_details_endpoint}/{job_id}"
+    def _fetch_job_details(self, job_id, base_url, params):
+        site_number = params.get("siteNumber", "")
+        finder = f'ById;Id="{job_id}",siteNumber={site_number}'
+        url = f"{base_url}{_HCM_DETAILS_ENDPOINT}"
         try:
-            resp = self.session.get(url, params={"onlyData": "true"}, timeout=30)
+            resp = self.session.get(
+                url,
+                params={"expand": "all", "onlyData": "true", "finder": finder},
+                timeout=30,
+            )
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            items = data.get("items", [])
+            return items[0] if items else None
         except Exception as e:
-            logger.warning(f"Failed to fetch details for job {job_id}: {e}")
+            logger.debug(f"Detail fetch unavailable for job {job_id}: {e}")
             return None
 
     def _fetch_description_from_page(self, job_url: str) -> str:

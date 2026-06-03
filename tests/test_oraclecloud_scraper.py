@@ -157,11 +157,13 @@ def scrape(
             "description_chars": len(job.description) if job.description else 0,
         }
         job_dicts.append(d)
+        desc_preview = (job.description or "")[:200].replace("\n", " ")
         typer.echo(f"  {d['title']}")
         typer.echo(f"    URL:         {d['url']}")
         typer.echo(f"    Location:    {d['location']}")
         typer.echo(f"    Posted:      {d['date_posted']}")
         typer.echo(f"    Desc chars:  {d['description_chars']}")
+        typer.echo(f"    Desc:        {desc_preview}")
         typer.echo("")
 
     if output:
