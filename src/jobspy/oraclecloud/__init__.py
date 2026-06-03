@@ -1,12 +1,10 @@
 from __future__ import annotations
-import json
 import logging
 from datetime import datetime
-from urllib.parse import urlencode, quote
+from urllib.parse import quote
 
 from html_to_markdown import convert_to_markdown
 
-from jobspy.lib.downloader import download_url
 from jobspy.model import (
     Scraper,
     ScraperInput,
@@ -16,6 +14,7 @@ from jobspy.model import (
     Country,
     Location,
 )
+from jobspy.util import create_session
 
 logger = logging.getLogger("OracleCloud")
 
@@ -33,6 +32,12 @@ class OracleCloud(Scraper):
         )
         # companies will hold per-company params (e.g., nfcu, jpmc)
         self.companies: dict[str, dict] = {}
+        self.session = create_session(
+            proxies=proxies[0] if isinstance(proxies, list) and proxies else proxies,
+            ca_cert=ca_cert,
+            is_tls=False,
+        )
+        self.session.headers.update({"Accept": "application/json"})
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
         """
@@ -47,7 +52,6 @@ class OracleCloud(Scraper):
         # Load parameters from job_finder_config
         job_finder_config = scraper_input.job_finder_config or {}
         oracle_params = job_finder_config.get("oraclecloud_params", {})
-        self.chrome_user_data_dir = job_finder_config.get("storage_dirs", {}).get("chrome_user_data_dir")
 
         # site_config is REQUIRED for OracleCloud scraper
         if not scraper_input.site_config:
@@ -117,8 +121,9 @@ class OracleCloud(Scraper):
 
             try:
                 logger.info(f"Fetching jobs for {company_name} from: {full_url}")
-                response_text = download_url(full_url, chrome_user_data_dir=self.chrome_user_data_dir)
-                data = json.loads(response_text)
+                resp = self.session.get(full_url, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
 
                 items = data.get("items", [])
                 if not items:
@@ -230,8 +235,9 @@ class OracleCloud(Scraper):
             job_id, base_url, job_details_endpoint, params
         )
         try:
-            resp = download_url(url, chrome_user_data_dir=self.chrome_user_data_dir)
-            return json.loads(resp)
+            resp = self.session.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp.json()
         except Exception as e:
             logger.warning(f"Failed to fetch details for job {job_id}: {e}")
             return None
