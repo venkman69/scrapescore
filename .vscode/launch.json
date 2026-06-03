@@ -166,6 +166,15 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false
+        },
+                {
+            "name": "Scrape Score Dash",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/scrapescore/app.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
         }
     ],
     "inputs": [

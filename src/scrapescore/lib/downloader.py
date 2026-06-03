@@ -52,6 +52,9 @@ def download_url(url: str, headless: bool = True) -> str:
     if "greenhouse" in url:
         logger.info(f"Downloading job from greenhouse: {url}")
         return download_job_from_greenhouse(url, headless=headless)
+    if "oraclecloud" in url:
+        logger.info(f"Downloading job from OracleCloud: {url}")
+        return download_job_from_oraclecloud(url)
 
     try:
         logger.info(f"Downloading job using requests: {url}")
@@ -401,6 +404,91 @@ def download_job_from_greenhouse(url: str, headless: bool = True) -> str:
         return job_description
     else:
         return ""
+
+
+def _parse_oraclecloud_url(url: str) -> tuple[str, str, str] | None:
+    """Extract (base_url, site_number, job_id) from an OracleCloud candidate URL.
+
+    Expected path: /hcmUI/CandidateExperience/en/sites/{siteNumber}/job/{jobId}
+    """
+    parsed = urlparse(url)
+    parts = parsed.path.rstrip("/").split("/")
+    try:
+        job_idx = parts.index("job")
+        site_idx = parts.index("sites")
+        job_id = parts[job_idx + 1]
+        site_number = parts[site_idx + 1]
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        return base_url, site_number, job_id
+    except (ValueError, IndexError):
+        return None
+
+
+_HCM_DETAILS_ENDPOINT = "/hcmRestApi/resources/latest/recruitingCEJobRequisitionDetails"
+
+_ORACLECLOUD_DESC_FIELDS = [
+    "ExternalDescriptionStr",
+    "ExternalResponsibilitiesStr",
+    "ExternalQualificationsStr",
+    "InternalResponsibilitiesStr",
+    "InternalQualificationsStr",
+    "CorporateDescriptionStr",
+]
+
+
+def download_job_from_oraclecloud(url: str) -> str:
+    """Fetch an OracleCloud job description via the HCM REST API.
+
+    Mirrors the approach used by the jobspy OracleCloud scraper:
+    calls recruitingCEJobRequisitionDetails with a finder query, then falls
+    back to HTML page JSON-LD if the API returns no content.
+    """
+    coords = _parse_oraclecloud_url(url)
+    if not coords:
+        logger.warning(f"Could not parse OracleCloud URL: {url}")
+        return ""
+
+    base_url, site_number, job_id = coords
+    api_url = f"{base_url}{_HCM_DETAILS_ENDPOINT}"
+    finder = f'ById;Id="{job_id}",siteNumber={site_number}'
+
+    try:
+        resp = requests.get(
+            api_url,
+            params={"expand": "all", "onlyData": "true", "finder": finder},
+            headers={"Accept": "application/json"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("items", [])
+        if items:
+            item = items[0]
+            parts = [item.get(f) for f in _ORACLECLOUD_DESC_FIELDS if item.get(f)]
+            description_html = "\n".join(parts)
+            if description_html:
+                logger.info(f"OracleCloud: REST API returned description for job {job_id} ({len(description_html)} chars)")
+                return description_html
+    except Exception as e:
+        logger.warning(f"OracleCloud REST API fetch failed for {url}: {e}")
+
+    # Fallback: load the candidate HTML page and try JSON-LD
+    logger.info(f"OracleCloud: falling back to HTML page for job {job_id}")
+    try:
+        resp = requests.get(url, timeout=30)
+        if resp.ok:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            ld = soup.find("script", type="application/ld+json")
+            if ld and ld.string:
+                ld_data = json.loads(ld.string)
+                desc = ld_data.get("description", "")
+                if desc:
+                    logger.info(f"OracleCloud: JSON-LD fallback succeeded for job {job_id}")
+                    return desc
+    except Exception as e:
+        logger.warning(f"OracleCloud HTML fallback failed for {url}: {e}")
+
+    return ""
 
 
 class TimeoutException(Exception):
