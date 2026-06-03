@@ -7,7 +7,7 @@ from playwright_stealth import Stealth
 import time
 import re
 import traceback
-from urllib.parse import urlencode, urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs
 import cloudscraper
 import threading
 import fcntl
@@ -451,67 +451,3 @@ def download_job_with_playwright(
             except Exception as e:
                 logger.warning(f"Error closing page: {e}")
 
-
-def search_workday_jobs_with_playwright(
-    url: str,
-    params: dict[str, str] | None = None,
-    timeout: int = 20000,
-    chrome_user_data_dir: str | None = None,
-) -> str:
-    """Search Workday jobs using Playwright with timeout protection."""
-    with get_playwright_stealth_browser(headless=True, chrome_user_data_dir=chrome_user_data_dir) as browser:
-        page = None
-        try:
-            timeout_seconds = int(timeout / 1000) + 10
-
-            with timeout_context(timeout_seconds):
-                page = browser.new_page()
-                page.set_default_timeout(timeout)
-
-                if not params:
-                    params = {}
-                query_string = urlencode(params, doseq=True)
-                if "?" in url:
-                    playwright_url = f"{url}&{query_string}" if query_string else url
-                else:
-                    playwright_url = f"{url}?{query_string}" if query_string else url
-                logger.info(f"Playwright URL: {playwright_url}")
-
-                try:
-                    page.goto(playwright_url, timeout=timeout, wait_until="domcontentloaded")
-                    logger.debug(f"Page loaded successfully for {playwright_url}")
-                except Exception as goto_error:
-                    logger.warning(f"page.goto() error for {playwright_url}: {goto_error}")
-                    try:
-                        html_content = page.content()
-                        logger.info("Got partial content despite goto error")
-                        return html_content
-                    except Exception:
-                        raise
-
-                try:
-                    jobs_found_label = page.get_by_text(re.compile(r"JOBS? FOUND", re.IGNORECASE))
-                    jobs_found_label.wait_for(state="visible", timeout=10000)
-                    logger.info(f"Num jobs found: {jobs_found_label.text_content()}")
-                    html_content = page.content(timeout=timeout)
-                    return html_content
-                except Exception as e:
-                    logger.warning(f"Failed to find jobs label on {playwright_url}: {e}")
-                    html_content = page.content(timeout=timeout)
-                    return html_content
-
-        except TimeoutException as te:
-            logger.error(f"Timeout error for {url}: {te}")
-            return ""
-        except Exception as e:
-            logger.error(f"Failed to retrieve URL: {url}")
-            logger.error(f"Error during playwright execution: {e}")
-            logger.debug(traceback.format_exc())
-            return ""
-        finally:
-            try:
-                if page:
-                    page.close()
-                    logger.debug(f"Closed page for {url}")
-            except Exception as e:
-                logger.warning(f"Error closing page: {e}")
