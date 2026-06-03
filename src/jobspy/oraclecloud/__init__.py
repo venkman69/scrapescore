@@ -4,7 +4,10 @@ from datetime import datetime
 from urllib.parse import quote
 
 from html_to_markdown import convert_to_markdown
+from bs4 import BeautifulSoup
+import json as _json
 
+from jobspy.lib.downloader import download_url
 from jobspy.model import (
     Scraper,
     ScraperInput,
@@ -54,6 +57,7 @@ class OracleCloud(Scraper):
         # Load parameters from job_finder_config
         job_finder_config = scraper_input.job_finder_config or {}
         oracle_params = job_finder_config.get("oraclecloud_params", {})
+        self.chrome_user_data_dir = job_finder_config.get("storage_dirs", {}).get("chrome_user_data_dir")
 
         # site_config is REQUIRED for OracleCloud scraper
         if not scraper_input.site_config:
@@ -176,29 +180,36 @@ class OracleCloud(Scraper):
                 job_id, base_url, job_details_endpoint, params
             )
             job_url = f"{base_url}/hcmUI/CandidateExperience/en/sites/{params.get('siteNumber')}/job/{job_id}"
-            if not details_data:
-                description_html = req.get("ShortDescriptionStr") or ""
-                description = convert_to_markdown(description_html)
-            else:
-                # Path-based access returns the flat resource; finder-based wraps in {"items": [...]}
+
+            # Collect description fields from the detail response (if available) or the search result
+            if details_data:
+                # Path-based returns flat resource; finder-based wraps in {"items": [...]}
                 item = details_data.get("items", [None])[0] if "items" in details_data else details_data
+            else:
+                item = {}
 
-                description_fields = [
-                    item.get("ExternalDescriptionStr"),
-                    item.get("InternalResponsibilitiesStr"),
-                    item.get("ExternalQualificationsStr"),
-                    item.get("InternalQualificationsStr"),
-                    item.get("CorporateDescriptionStr"),
-                ]
-                description_html = "\n".join([f for f in description_fields if f])
-                if not description_html:
-                    description_html = (
-                        item.get("ShortDescriptionStr")
-                        or req.get("ShortDescriptionStr")
-                        or ""
-                    )
+            _desc_sources = [
+                item.get("ExternalDescriptionStr"),
+                item.get("InternalResponsibilitiesStr"),
+                item.get("ExternalQualificationsStr"),
+                item.get("InternalQualificationsStr"),
+                item.get("CorporateDescriptionStr"),
+                # also try the same fields from the search result directly
+                req.get("ExternalResponsibilitiesStr"),
+                req.get("ExternalQualificationsStr"),
+                req.get("ShortDescriptionStr"),
+            ]
+            description_html = "\n".join([f for f in _desc_sources if f])
 
-                description = convert_to_markdown(description_html or "")
+            # Last resort: render the job HTML page via Playwright and extract JSON-LD
+            if not description_html:
+                description_html = self._fetch_description_from_page(job_url) or ""
+                if description_html:
+                    logger.info(f"{job_id}: Got description from rendered HTML page ({len(description_html)} chars)")
+                else:
+                    logger.warning(f"{job_id}: No description available from REST API or HTML page")
+
+            description = convert_to_markdown(description_html) if description_html else ""
 
             location = self._parse_location(req.get("PrimaryLocation") or "")
 
@@ -238,6 +249,22 @@ class OracleCloud(Scraper):
         except Exception as e:
             logger.warning(f"Failed to fetch details for job {job_id}: {e}")
             return None
+
+    def _fetch_description_from_page(self, job_url: str) -> str:
+        """Fetch the job HTML page (via Playwright if needed) and extract description from JSON-LD."""
+        try:
+            chrome_user_data_dir = getattr(self, "chrome_user_data_dir", None)
+            html = download_url(job_url, chrome_user_data_dir=chrome_user_data_dir)
+            if not html:
+                return ""
+            soup = BeautifulSoup(html, "html.parser")
+            ld = soup.find("script", type="application/ld+json")
+            if ld and ld.string:
+                data = _json.loads(ld.string)
+                return data.get("description", "")
+        except Exception as e:
+            logger.debug(f"HTML page description fetch failed for {job_url}: {e}")
+        return ""
 
     def _parse_location(self, loc_str):
         # "Vienna, VA, United States"
