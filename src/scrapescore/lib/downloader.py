@@ -258,7 +258,31 @@ _WORKDAY_HEADERS = {
 }
 
 
+def _build_workday_cxs_url(url: str) -> str:
+    parsed = urlparse(url)
+    company = parsed.netloc.split(".")[0]
+    return f"{parsed.scheme}://{parsed.netloc}/wday/cxs/{company}{parsed.path}"
+
+
 def download_job_from_workday(url: str, headless: bool = True) -> str:
+    # Try CXS REST API first — same approach as jobspy Workday scraper
+    try:
+        cxs_url = _build_workday_cxs_url(url)
+        resp = requests.get(
+            cxs_url,
+            headers={"accept": "application/json", "accept-language": "en-US"},
+            timeout=20,
+        )
+        if resp.ok:
+            job_details = resp.json().get("jobPostingInfo", {})
+            desc = job_details.get("jobDescription", "")
+            if desc:
+                logger.info(f"Workday CXS API returned description ({len(desc)} chars): {url}")
+                return desc
+    except Exception as e:
+        logger.warning(f"Workday CXS API fetch failed for {url}: {e}")
+
+    # Fallback: HTML page + JSON-LD extraction
     try:
         resp = requests.get(url, headers=_WORKDAY_HEADERS, timeout=20)
         if not resp.ok:
