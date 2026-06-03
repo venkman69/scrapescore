@@ -52,8 +52,9 @@ def _get_fresh_job_key() -> str:
     return results[0]["job"]["key"]
 
 
-def _run_tests(job_key: str) -> list[tuple[str, str]]:
+def _run_tests(job_key: str) -> tuple[list[tuple[str, str]], str]:
     results = []
+    description = ""
 
     # Test 1: key extraction from viewjob URL
     url_viewjob = f"https://www.indeed.com/viewjob?jk={job_key}"
@@ -78,7 +79,7 @@ def _run_tests(job_key: str) -> list[tuple[str, str]]:
         results.append(("Key extraction returns None for bare URL", "FAIL"))
 
     # Test 4: mobile fetch returns non-empty HTML description
-    description = _fetch_indeed_description(job_key)
+    description = _fetch_indeed_description(job_key) or ""
     if description and len(description) > 50:
         results.append((f"Mobile fetch returned {len(description)} chars of HTML", "PASS"))
         typer.echo(f"\n  Description preview: {description[:100]}")
@@ -106,13 +107,14 @@ def _run_tests(job_key: str) -> list[tuple[str, str]]:
     else:
         results.append((f"URL without key returned unexpected value: {desc_no_key!r:.60}", "FAIL"))
 
-    return results
+    return results, description
 
 
 @app.command()
 def main(
     job_key: Optional[str] = typer.Option(None, "--job-key", "-k", help="Indeed job key (jk param)"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="Full Indeed job URL"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Save description to file"),
 ):
     """Test Indeed job description retrieval via mobile user-agent + LD+JSON."""
     typer.echo("=" * 60)
@@ -136,7 +138,7 @@ def main(
     else:
         typer.echo(f"[*] Using job key: {job_key}")
 
-    results = _run_tests(job_key)
+    results, description = _run_tests(job_key)
 
     typer.echo("")
     failed = 0
@@ -144,6 +146,10 @@ def main(
         typer.echo(f"  [{status}] {name}")
         if status == "FAIL":
             failed += 1
+
+    if output and description:
+        Path(output).write_text(description, encoding="utf-8")
+        typer.echo(f"\n[+] Saved description → {output}")
 
     typer.echo("\n" + "=" * 60)
     if failed:

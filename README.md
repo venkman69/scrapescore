@@ -4,7 +4,7 @@
 
 Mostly vibe-coded personal job search dashboard built with FastHTML + MonsterUI. Scrapes job boards, scores postings using AI against your resume and role preferences, and tracks applications through the full pipeline.
 
-Project leverages a somewhat modified JobSpy https://github.com/cullenwatson/JobSpy which was an excellent starting point for a lot of the scraping efforts. 
+Project leverages a somewhat modified [JobSpy](https://github.com/cullenwatson/JobSpy) which was an excellent starting point for a lot of the scraping efforts. 
 
 The AI scoring mechanism was very expensive in estimation due to upwards of 50Kb of prompt text being processed. I wrote a gemini ai scraper as a sibling project which uses redis for queuing request.
 

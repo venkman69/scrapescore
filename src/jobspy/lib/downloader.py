@@ -198,12 +198,50 @@ def get_playwright_stealth_browser(headless: bool = True, chrome_user_data_dir: 
         _release_browser()
 
 
+_WORKDAY_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
 def download_job_from_workday(url: str, headless: bool = True, chrome_user_data_dir: str | None = None) -> str:
-    workday_selector = "Workday, Inc. All rights reserved."
-    return download_job_with_playwright(
-        url, selector=workday_selector, selector_type="text", headless=headless,
-        chrome_user_data_dir=chrome_user_data_dir,
-    )
+    try:
+        resp = requests.get(url, headers=_WORKDAY_HEADERS, timeout=20)
+        if not resp.ok:
+            logger.warning(f"Workday fetch returned {resp.status_code} for {url}")
+            return ""
+        resp.encoding = resp.apparent_encoding or "utf-8"
+        page = resp.text
+    except Exception as e:
+        logger.error(f"Workday fetch failed for {url}: {e}")
+        return ""
+    soup = BeautifulSoup(page, "html.parser")
+    ld_script = soup.find("script", type="application/ld+json")
+    if ld_script:
+        try:
+            data = json.loads(ld_script.string)
+            desc = data.get("description", "")
+            if desc:
+                return desc
+        except Exception as e:
+            logger.warning(f"Workday JSON-LD parse failed for {url}: {e}")
+    # Fallback: Workday sometimes embeds JSON without the type attribute
+    m = re.search(r'<script[^>]*>\s*(\{[^<]*"jobLocation"[^<]*)\s*</script>', page, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            desc = data.get("description", "")
+            if desc:
+                return desc
+        except Exception:
+            pass
+    logger.warning(f"Workday: could not extract description for {url}")
+    return ""
 
 
 _LINKEDIN_HEADERS = {

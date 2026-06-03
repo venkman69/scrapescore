@@ -28,7 +28,7 @@ def _extract_job_id(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _run_tests(job_id: str) -> list[tuple[str, str]]:
+def _run_tests(job_id: str) -> tuple[list[tuple[str, str]], str]:
     results = []
     url = f"https://www.linkedin.com/jobs/view/{job_id}/"
 
@@ -53,13 +53,14 @@ def _run_tests(job_id: str) -> list[tuple[str, str]]:
     else:
         results.append((f"Invalid job ID returned unexpected value ({len(bad)} chars)", "FAIL"))
 
-    return results
+    return results, description
 
 
 @app.command()
 def main(
     job_id: Optional[str] = typer.Option(None, "--job-id", "-i", help="LinkedIn job ID from URL /jobs/view/<id>/"),
     url: Optional[str] = typer.Option(None, "--url", "-u", help="Full LinkedIn job URL"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Save description to file"),
 ):
     """Test LinkedIn job description retrieval via direct HTTP fetch."""
     typer.echo("=" * 60)
@@ -78,7 +79,7 @@ def main(
     else:
         typer.echo(f"[*] Using job ID: {job_id}")
 
-    results = _run_tests(job_id)
+    results, description = _run_tests(job_id)
 
     typer.echo("")
     failed = 0
@@ -86,6 +87,10 @@ def main(
         typer.echo(f"  [{status}] {name}")
         if status == "FAIL":
             failed += 1
+
+    if output and description:
+        Path(output).write_text(description, encoding="utf-8")
+        typer.echo(f"\n[+] Saved description → {output}")
 
     typer.echo("\n" + "=" * 60)
     if failed:
