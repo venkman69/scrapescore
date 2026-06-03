@@ -180,7 +180,8 @@ class OracleCloud(Scraper):
                 description_html = req.get("ShortDescriptionStr") or ""
                 description = convert_to_markdown(description_html)
             else:
-                item = details_data.get("items", [{}])[0]
+                # Path-based access returns the flat resource; finder-based wraps in {"items": [...]}
+                item = details_data.get("items", [None])[0] if "items" in details_data else details_data
 
                 description_fields = [
                     item.get("ExternalDescriptionStr"),
@@ -228,16 +229,10 @@ class OracleCloud(Scraper):
             )
             return None
 
-    def _construct_details_url(self, job_id, base_url, job_details_endpoint, params):
-        finder_val = f'ById;Id="{job_id}",siteNumber={params.get("siteNumber")}'
-        return f"{base_url}{job_details_endpoint}?expand=all&onlyData=true&finder={finder_val}"
-
     def _fetch_job_details(self, job_id, base_url, job_details_endpoint, params):
-        url = self._construct_details_url(
-            job_id, base_url, job_details_endpoint, params
-        )
+        url = f"{base_url}{job_details_endpoint}/{job_id}"
         try:
-            resp = self.session.get(url, timeout=30)
+            resp = self.session.get(url, params={"onlyData": "true"}, timeout=30)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
