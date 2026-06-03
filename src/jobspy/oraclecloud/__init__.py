@@ -18,6 +18,8 @@ from jobspy.util import create_session
 
 logger = logging.getLogger("OracleCloud")
 
+_HCM_JOBS_ENDPOINT = "/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
+
 
 class OracleCloud(Scraper):
     def __init__(
@@ -83,8 +85,8 @@ class OracleCloud(Scraper):
         # Adapted from legacy NFCU implementation but parameterized per company
         job_list: list[JobPost] = []
         base_url = params.get("base_url", "")
-        jobs_endpoint = params.get("jobs_endpoint", "")
-        job_details_endpoint = params.get("job_details_endpoint", "")
+        jobs_endpoint = params.get("jobs_endpoint", _HCM_JOBS_ENDPOINT)
+        job_details_endpoint = params.get("job_details_endpoint", _HCM_JOBS_ENDPOINT)
         limit = params.get("limit", 10)
         offset = 0
         total_jobs = None
