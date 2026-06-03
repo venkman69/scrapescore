@@ -34,7 +34,17 @@ from jobspy.model import ScraperInput, Site
 utils.config_logger("test_oraclecloud_scraper.log", Path("logs"))
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Test OracleCloud scraper against DB-configured companies")
+app = typer.Typer(
+    help="Test OracleCloud scraper against DB-configured companies",
+    epilog=(
+        "Examples:\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py list\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py list --user me@example.com\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py scrape jpmc\n\n"
+        '  uv run tests/test_oraclecloud_scraper.py scrape jpmc --search "data engineer" --results 10\n\n'
+        "  uv run tests/test_oraclecloud_scraper.py scrape nfcu --output jobs.json"
+    ),
+)
 
 
 def _resolve_user(user: Optional[str]) -> str:
@@ -54,7 +64,13 @@ def _get_oraclecloud_configs(owning_user: str) -> list[dict]:
     ]
 
 
-@app.command()
+@app.command(
+    epilog=(
+        "Examples:\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py list\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py list --user me@example.com"
+    ),
+)
 def list(
     user: Optional[str] = typer.Option(None, "--user", "-u", help="Owning user (email). Defaults to first user in DB."),
 ):
@@ -78,7 +94,15 @@ def list(
     typer.echo(f"\n{len(configs)} company/companies configured.")
 
 
-@app.command()
+@app.command(
+    epilog=(
+        "Examples:\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py scrape jpmc\n\n"
+        '  uv run tests/test_oraclecloud_scraper.py scrape jpmc --search "data engineer" --results 10\n\n'
+        "  uv run tests/test_oraclecloud_scraper.py scrape nfcu --output jobs.json\n\n"
+        "  uv run tests/test_oraclecloud_scraper.py scrape nfcu --user me@example.com --search \"cloud architect\""
+    ),
+)
 def scrape(
     company: str = typer.Argument(..., help="Company config key (e.g. 'jpmc', 'nfcu')"),
     search: str = typer.Option("software engineer", "--search", "-s", help="Search term"),
