@@ -3,12 +3,14 @@ Scoring router for job_score.
 Handles profile comparison against job postings using AI.
 """
 
+import json
 import logging
 from fasthtml.common import *
 from monsterui.all import *
 
 from .common import NavigationLayout, get_auth_user
-from .db import get_profiles_for_user, get_profile
+from .db import get_profiles_for_user, get_profile, create_applied_job, update_job_score
+from .lib.config import BASE_PREFIX
 from scrapescore.lib import utils
 from scrapescore.lib.gemini_ai_runner import ats_score_analyzer_gemini
 
@@ -42,6 +44,109 @@ def render_action_button(enabled=False, oob=False):
     if oob:
         return Div(btn, id="action_btn_container", hx_swap_oob="innerHTML")
     return btn
+
+
+def _add_to_applied_accordion():
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    _lbl = "text-xs font-medium shrink-0 w-16"
+    _inp = "text-sm flex-1 min-w-0"
+    _row_cls = "flex items-center gap-2"
+
+    def _field(label, **kw):
+        return Div(Label(label, cls=_lbl), Input(cls=_inp, **kw), cls=_row_cls)
+
+    def _toggle(label, **kw):
+        return Label(
+            Switch(cls="shrink-0", **kw),
+            Span(label, cls="text-xs font-medium ml-2 cursor-pointer select-none"),
+            cls="flex items-center gap-2 cursor-pointer",
+        )
+
+    return Div(
+        Ul(
+            Li(
+                Div(
+                    DivFullySpaced(
+                        DivLAligned(UkIcon("plus-circle", ratio=0.9, cls="mr-1"), Span("Add to Applied Jobs", cls="text-sm font-medium")),
+                        UkIcon("chevron-down", cls="transition-transform duration-200"),
+                    ),
+                    cls="uk-accordion-title flex items-center justify-between cursor-pointer rounded border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800",
+                ),
+                Div(
+                    Form(
+                        # Populated via OOB swap after scoring; empty until then
+                        Input(type="hidden", id="score_json_result", name="score_json_result", value=""),
+                        Div(
+                            _field("Title", name="title", placeholder="Job title"),
+                            Div(
+                                Label("Applied", cls=_lbl),
+                                Input(cls=_inp, name="applied_at", type="date", value=today,
+                                      onclick="try{this.showPicker()}catch(e){}"),
+                                cls=_row_cls,
+                            ),
+                            Div(
+                                _field("Company", name="company", placeholder="Company name"),
+                                _field("Location", name="location", placeholder="City, State"),
+                                cls="grid grid-cols-1 sm:grid-cols-2 gap-2",
+                            ),
+                            Div(
+                                Span("Salary (USD)", cls="text-xs font-semibold text-muted-foreground"),
+                                Div(
+                                    _field("Min $", name="min_amount", placeholder="100000"),
+                                    _field("Max $", name="max_amount", placeholder="150000"),
+                                    cls="grid grid-cols-1 sm:grid-cols-2 gap-2",
+                                ),
+                                _field("Interval", name="interval", placeholder="yearly / hourly"),
+                                cls="space-y-1.5 border-l-2 border-muted pl-2",
+                            ),
+                            Div(
+                                _toggle("Remote", name="is_remote", value="true"),
+                                _toggle("Clearance Required", name="security_clearance_required", value="1"),
+                                cls="flex flex-col gap-2.5 pt-1",
+                            ),
+                            cls="space-y-2 border rounded p-2",
+                        ),
+                        Div(
+                            Button(
+                                "Add to Applied Jobs",
+                                id="add-applied-btn",
+                                type="submit",
+                                disabled=True,
+                                cls=f"{ButtonT.primary} text-sm mt-3",
+                            ),
+                        ),
+                        Div(id="add-applied-result", cls="mt-2"),
+                        hx_post="/score/add-to-db",
+                        hx_include="#job_url, #job_text",
+                        hx_target="#add-applied-result",
+                        hx_swap="innerHTML",
+                        cls="p-2",
+                    ),
+                    cls="uk-accordion-content mt-2",
+                ),
+            ),
+            uk_accordion="collapsible: true",
+            cls="uk-accordion",
+        ),
+        Script("""
+(function() {
+  function syncAddBtn() {
+    var url = document.getElementById('job_url');
+    var btn = document.getElementById('add-applied-btn');
+    if (url && btn) btn.disabled = !url.value.trim();
+  }
+  var url = document.getElementById('job_url');
+  if (url) {
+    url.addEventListener('input', syncAddBtn);
+    url.addEventListener('change', syncAddBtn);
+    syncAddBtn();
+  }
+})();
+"""),
+        id="add-applied-accordion",
+        cls="mt-2",
+    )
 
 
 @score_rt("/")
@@ -136,7 +241,7 @@ def get(auth, sess):
                 # Trigger validation on input
                 hx_post="/score/validate",
                 hx_target="#action_btn_container",
-                hx_trigger="keyup changed delay:500ms",
+                hx_trigger="input changed delay:500ms",
                 hx_include="#profile_name",
             ),
             id="job_text_container",
@@ -168,6 +273,7 @@ def get(auth, sess):
         inputs_section,
         job_description_section,
         action_btn,
+        _add_to_applied_accordion(),
         progress_spinner,
         result_section,
         cls="py-8 max-w-4xl",
@@ -259,7 +365,7 @@ def post_download(job_url: str, profile_name: str = "", auth=None):
                 cls="bg-white dark:bg-slate-900",
                 hx_post="/score/validate",
                 hx_target="#action_btn_container",
-                hx_trigger="keyup changed delay:500ms",
+                hx_trigger="input changed delay:500ms",
                 hx_include="#profile_name",
             ),
             P(f"Error downloading: {str(e)}", cls="text-red-500 text-sm"),
@@ -306,10 +412,63 @@ def post_calculate(profile_name: str, job_text: str, job_url: str = "", auth=Non
         if "error" in result:
             return Alert(f"Scoring Error: {result['error']}", cls=AlertT.error)
 
-        return render_ats_score(result)
+        score_json_str = json.dumps(result)
+        return Div(
+            render_ats_score(result),
+            # OOB-swap populates the hidden field inside the accordion form
+            Input(
+                type="hidden", id="score_json_result", name="score_json_result",
+                value=score_json_str, hx_swap_oob="outerHTML:#score_json_result",
+            ),
+        )
     except Exception as e:
         logger.exception("Scoring failed")
         return Alert(f"Scoring Failed: {str(e)}", cls=AlertT.error)
+
+
+@score_rt("/add-to-db", methods=["POST"])
+def post_add_to_db(
+    job_text: str = "", job_url: str = "", score_json_result: str = "",
+    title: str = "", company: str = "", location: str = "", applied_at: str = "",
+    min_amount: str = "", max_amount: str = "", interval: str = "",
+    is_remote: str = "", security_clearance_required: str = "",
+    auth=None,
+):
+    user = get_auth_user(auth)
+    if not job_url or not job_url.strip():
+        return Alert("A job URL is required.", cls=AlertT.error)
+
+    from datetime import date as _date
+    job_data = {
+        "job_url": job_url.strip(),
+        "description": job_text,
+        "title": title,
+        "company": company,
+        "location": location,
+        "applied_at": applied_at or _date.today().isoformat(),
+        "min_amount": min_amount,
+        "max_amount": max_amount,
+        "interval": interval,
+        "is_remote": "true" if is_remote else "false",
+        "security_clearance_required": bool(security_clearance_required),
+    }
+    new_id = create_applied_job(job_data, user)
+    if not new_id:
+        return Alert("Failed to add job to database.", cls=AlertT.error)
+
+    if score_json_result:
+        try:
+            result = json.loads(score_json_result)
+            numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
+            update_job_score(new_id, numeric_score, score_json_result, user)
+        except Exception:
+            logger.warning("Score JSON could not be saved for new job %s", new_id)
+
+    return Alert(
+        "Job added. ",
+        A("View in Applied tab", href=f"{BASE_PREFIX}/applied/", cls="underline font-medium"),
+        cls=AlertT.success,
+    )
 
 
 def _score_border_cls(score):

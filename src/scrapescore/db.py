@@ -396,6 +396,17 @@ def update_title_compatibility_score(job_id: int, score: str, owning_user: str) 
     conn.close()
 
 
+def update_job_score(job_id: int, score: float, score_json: str, owning_user: str) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE job_details SET job_score = ?, job_score_json = ? WHERE id = ? AND owning_user = ?",
+        (score, score_json, job_id, owning_user),
+    )
+    conn.commit()
+    conn.close()
+
+
 def apply_job(job_id: int, owning_user: str) -> bool:
     """Mark a job as applied in job_details and record initial status history entry."""
     conn = get_db_connection()

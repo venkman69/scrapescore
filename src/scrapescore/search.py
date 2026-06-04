@@ -23,6 +23,7 @@ from .db import (
     get_profile,
     update_job_description,
     update_job_review_status,
+    update_job_score,
     update_title_compatibility_score,
 )
 from scrapescore.db_setup import get_db_connection
@@ -907,6 +908,8 @@ def post_score(job_id: int, profile_name: str = "", description: str = "", auth=
         )
         if "error" in result:
             return Alert(f"Scoring error: {result['error']}", cls=AlertT.error)
+        numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
+        update_job_score(job_id, numeric_score, json.dumps(result), user)
         return render_ats_score(result)
     except Exception as e:
         logger.exception("Scoring failed")

@@ -27,6 +27,7 @@ from .db import (
     get_profiles_for_user,
     get_default_profile,
     update_job_description,
+    update_job_score,
 )
 from .score import render_ats_score
 from scrapescore.lib.gemini_ai_runner import ats_score_analyzer_gemini
@@ -563,8 +564,6 @@ def _history_section(job_id: int) -> FT:
 
     _sm_btn = f"{ButtonT.default} text-xs"
     return Div(
-        H4("Application Status History", cls="text-sm font-semibold mb-1"),
-        Div(*timeline, cls="space-y-1.5 mb-3") if timeline else P("No events yet.", cls="text-xs text-muted-foreground mb-3"),
         Div(
             H5("Add Event", cls="text-xs font-semibold mb-1"),
             Div(
@@ -596,6 +595,8 @@ def _history_section(job_id: int) -> FT:
                 cls="text-xs w-full mt-1",
             ),
         ),
+        H4("Application Status History", cls="text-sm font-semibold mb-1 mt-3"),
+        Div(*timeline, cls="space-y-1.5 mb-3") if timeline else P("No events yet.", cls="text-xs text-muted-foreground mb-3"),
         id=f"history-{job_id}",
         cls="mt-3",
     )
@@ -1134,6 +1135,8 @@ def post_score(job_id: int, description: str, auth):
         )
         if "error" in result:
             return Alert(f"Scoring Error: {result['error']}", cls=AlertT.error)
+        numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
+        update_job_score(job_id, numeric_score, json.dumps(result), user)
         return render_ats_score(result)
     except Exception as e:
         logger.exception("Applied scoring failed")
