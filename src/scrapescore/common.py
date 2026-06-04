@@ -52,8 +52,7 @@ _TAB_STATE_SCRIPT = Script(f"""
   save();
   window.addEventListener('popstate', save);
 
-  // Intercept tab nav link clicks to restore stored URL
-  // Uses a synthetic click so hx_boost intercepts it (AJAX swap) instead of full page load
+  // Intercept tab nav link clicks to restore stored URL via full-page navigation
   var _tabNavBusy = false;
   document.addEventListener('click', function(e) {{
     if (_tabNavBusy) return;
@@ -171,7 +170,6 @@ def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/",
             A(
                 DivLAligned(UkIcon(icon, cls="mr-2"), name),
                 href=f"{BASE_PREFIX}{path}",
-                hx_boost="true",
                 cls="text-primary font-semibold border-b-2 border-primary pb-1"
                 if _is_active(path)
                 else "text-foreground",
@@ -210,7 +208,6 @@ def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/",
             for name, path, icon in nav_items
         ],
         cls="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border flex z-50",
-        hx_boost="true",
     )
 
     content_list = list(content) if isinstance(content, (list, tuple)) else [content]
