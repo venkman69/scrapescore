@@ -117,6 +117,18 @@ def update_profile_by_rowid(rowid: int, profile_data: dict):
     conn.close()
 
 
+def save_resume_blob(profile_name: str, owning_user: str, blob_bytes: bytes):
+    """Store raw uploaded resume bytes without touching any other profile field."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE job_profiles SET resume_blob = ? WHERE profile_name = ? AND owning_user = ?",
+        (blob_bytes, profile_name, owning_user),
+    )
+    conn.commit()
+    conn.close()
+
+
 def delete_profile(profile_name: str, owning_user: str):
     """Delete a profile by name and owner."""
     conn = get_db_connection()

@@ -9,7 +9,7 @@ import os
 import tempfile
 from fasthtml.common import *
 from monsterui.all import *
-from .db import get_profiles_for_user, get_profile, save_profile, update_profile_by_rowid, delete_profile
+from .db import get_profiles_for_user, get_profile, save_profile, update_profile_by_rowid, delete_profile, save_resume_blob
 from .lib.config import BASE_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -741,6 +741,7 @@ def post_resume_upload(auth, file: UploadFile, profile_name: str = ""):
             if existing_profile:
                 existing_profile["resume"] = markdown_content
                 save_profile(existing_profile)
+                save_resume_blob(profile_name, auth, content)
             return markdown_content
         finally:
             if os.path.exists(tmp_path):
