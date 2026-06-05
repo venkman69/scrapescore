@@ -562,6 +562,8 @@ def _profile_form(profile: dict | None = None) -> FT:
                     }
                 } else {
                     if (extractedLabel) extractedLabel.style.display = 'none';
+                    const expander = document.getElementById('pdf_preview_expander');
+                    if (expander) expander.innerHTML = '';
                 }
                 triggerAutosave();
             })
