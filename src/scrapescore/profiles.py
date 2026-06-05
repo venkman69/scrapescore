@@ -206,11 +206,13 @@ def _profile_form(profile: dict | None = None) -> FT:
     creating = profile is None
     name_val = "" if creating else profile.get("profile_name", "")
 
-    # Detect whether a PDF blob is stored for this profile
+    # Detect what kind of blob is stored for this profile
     _blob = profile.get("resume_blob") if profile else None
     if _blob and isinstance(_blob, memoryview):
         _blob = bytes(_blob)
     has_pdf_blob = bool(_blob and _blob[:4] == b"%PDF")
+    has_text_blob = bool(_blob and not has_pdf_blob)
+    blob_text = _blob.decode("utf-8", errors="replace") if has_text_blob else ""
 
     # Get current values with defaults
     resume_val = profile.get("resume", "") if profile else ""
@@ -288,12 +290,7 @@ def _profile_form(profile: dict | None = None) -> FT:
                     onchange="uploadAndConvertResume(this, 'resume_textarea')",
                     style="display:none",
                 ),
-                P(
-                    "Extracted Text",
-                    id="resume_extracted_label",
-                    cls="text-xs text-gray-500 mt-2 mb-1",
-                    style=("" if has_pdf_blob else "display:none"),
-                ),
+                P("Sanitized Text For AI", cls="text-xs text-gray-500 mt-2 mb-1"),
                 Div(
                     TextArea(
                         resume_val,
@@ -313,19 +310,33 @@ def _profile_form(profile: dict | None = None) -> FT:
                 ),
                 Div(id="resume_preview", cls="mt-1 text-sm text-gray-600"),
                 Div(
-                    Details(
-                        Summary("View Resume", cls="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1"),
-                        Div(
-                            Iframe(
-                                src=f"{BASE_PREFIX}/profiles/resume-pdf?profile_name={name_val}",
-                                width="100%",
-                                height="500",
-                                style="border:1px solid #ccc;border-radius:4px;display:block;",
+                    *(
+                        [
+                            P("Uploaded Original Resume", cls="text-xs text-gray-500 mt-3 mb-1"),
+                            Details(
+                                Summary("View Resume", cls="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1"),
+                                Div(
+                                    Iframe(
+                                        src=f"{BASE_PREFIX}/profiles/resume-pdf?profile_name={name_val}",
+                                        width="100%",
+                                        height="500",
+                                        style="border:1px solid #ccc;border-radius:4px;display:block;",
+                                    ),
+                                    cls="mt-1",
+                                ),
                             ),
-                            cls="mt-1",
-                        ),
-                    ) if has_pdf_blob else "",
-                    id="pdf_preview_expander",
+                        ] if has_pdf_blob else [
+                            P("Uploaded Original Resume", cls="text-xs text-gray-500 mt-3 mb-1"),
+                            TextArea(
+                                blob_text,
+                                readonly=True,
+                                rows=10,
+                                cls="w-full mt-1",
+                                style="font-family:monospace;font-size:0.8em;",
+                            ),
+                        ] if has_text_blob else []
+                    ),
+                    id="original_resume_section",
                 ),
                 open=bool(resume_val),
             ),
@@ -551,19 +562,33 @@ def _profile_form(profile: dict | None = None) -> FT:
                     preview.innerHTML = 'Successfully uploaded ' + file.name;
                     preview.className = 'mt-2 text-sm text-blue-600 font-semibold';
                 }
-                const extractedLabel = document.getElementById('resume_extracted_label');
+                const profileNameEl = document.getElementById('profile_name_hidden');
+                const pname = profileNameEl ? encodeURIComponent(profileNameEl.value) : '';
+                const origSection = document.getElementById('original_resume_section');
                 if (fileName.endsWith('.pdf')) {
-                    if (extractedLabel) extractedLabel.style.display = '';
-                    const profileNameEl = document.getElementById('profile_name_hidden');
-                    const pname = profileNameEl ? encodeURIComponent(profileNameEl.value) : '';
-                    const expander = document.getElementById('pdf_preview_expander');
-                    if (expander) {
-                        expander.innerHTML = '<details><summary class="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1">View Resume</summary><div class="mt-1"><iframe src="' + _PROFILES_PREFIX + '/profiles/resume-pdf?profile_name=' + pname + '" width="100%" height="500" style="border:1px solid #ccc;border-radius:4px;display:block;"></iframe></div></details>';
+                    if (origSection) {
+                        origSection.innerHTML = '<p class="text-xs text-gray-500 mt-3 mb-1">Uploaded Original Resume</p><details><summary class="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1">View Resume</summary><div class="mt-1"><iframe src="' + _PROFILES_PREFIX + '/profiles/resume-pdf?profile_name=' + pname + '" width="100%" height="500" style="border:1px solid #ccc;border-radius:4px;display:block;"></iframe></div></details>';
                     }
                 } else {
-                    if (extractedLabel) extractedLabel.style.display = 'none';
-                    const expander = document.getElementById('pdf_preview_expander');
-                    if (expander) expander.innerHTML = '';
+                    if (origSection) {
+                        fetch(_PROFILES_PREFIX + '/profiles/resume-pdf?profile_name=' + pname)
+                            .then(function(r) { return r.ok ? r.text() : ''; })
+                            .then(function(text) {
+                                const label = document.createElement('p');
+                                label.className = 'text-xs text-gray-500 mt-3 mb-1';
+                                label.textContent = 'Uploaded Original Resume';
+                                const ta = document.createElement('textarea');
+                                ta.readOnly = true;
+                                ta.rows = 10;
+                                ta.className = 'w-full mt-1';
+                                ta.style.fontFamily = 'monospace';
+                                ta.style.fontSize = '0.8em';
+                                ta.value = text;
+                                origSection.innerHTML = '';
+                                origSection.appendChild(label);
+                                origSection.appendChild(ta);
+                            });
+                    }
                 }
                 triggerAutosave();
             })
