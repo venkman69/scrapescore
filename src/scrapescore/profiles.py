@@ -206,6 +206,12 @@ def _profile_form(profile: dict | None = None) -> FT:
     creating = profile is None
     name_val = "" if creating else profile.get("profile_name", "")
 
+    # Detect whether a PDF blob is stored for this profile
+    _blob = profile.get("resume_blob") if profile else None
+    if _blob and isinstance(_blob, memoryview):
+        _blob = bytes(_blob)
+    has_pdf_blob = bool(_blob and _blob[:4] == b"%PDF")
+
     # Get current values with defaults
     resume_val = profile.get("resume", "") if profile else ""
     desired_role_val = profile.get("desired_role_description", "") if profile else ""
@@ -300,6 +306,21 @@ def _profile_form(profile: dict | None = None) -> FT:
                     style="display:none",
                 ),
                 Div(id="resume_preview", cls="mt-1 text-sm text-gray-600"),
+                Div(
+                    Details(
+                        Summary("View Resume", cls="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1"),
+                        Div(
+                            Iframe(
+                                src=f"{BASE_PREFIX}/profiles/resume-pdf?profile_name={name_val}",
+                                width="100%",
+                                height="500",
+                                style="border:1px solid #ccc;border-radius:4px;display:block;",
+                            ),
+                            cls="mt-1",
+                        ),
+                    ) if has_pdf_blob else "",
+                    id="pdf_preview_expander",
+                ),
                 open=bool(resume_val),
             ),
             Div(
@@ -523,6 +544,14 @@ def _profile_form(profile: dict | None = None) -> FT:
                 if (preview) {
                     preview.innerHTML = 'Successfully uploaded ' + file.name;
                     preview.className = 'mt-2 text-sm text-blue-600 font-semibold';
+                }
+                if (fileName.endsWith('.pdf')) {
+                    const profileNameEl = document.getElementById('profile_name_hidden');
+                    const pname = profileNameEl ? encodeURIComponent(profileNameEl.value) : '';
+                    const expander = document.getElementById('pdf_preview_expander');
+                    if (expander) {
+                        expander.innerHTML = '<details><summary class="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1">View Resume</summary><div class="mt-1"><iframe src="' + _PROFILES_PREFIX + '/profiles/resume-pdf?profile_name=' + pname + '" width="100%" height="500" style="border:1px solid #ccc;border-radius:4px;display:block;"></iframe></div></details>';
+                    }
                 }
                 triggerAutosave();
             })
@@ -748,6 +777,26 @@ def post_resume_upload(auth, file: UploadFile, profile_name: str = ""):
                 os.unlink(tmp_path)
     except Exception as e:
         return str(e)
+
+
+@ar("/resume-pdf")
+def get_resume_pdf(auth, profile_name: str = ""):
+    """Serve the stored resume blob for a profile."""
+    from starlette.responses import Response as StarletteResponse
+    if not profile_name:
+        return StarletteResponse("Not found", status_code=404)
+    profile = get_profile(profile_name, auth)
+    if not profile or not profile.get("resume_blob"):
+        return StarletteResponse("Not found", status_code=404)
+    raw = profile["resume_blob"]
+    if isinstance(raw, memoryview):
+        raw = bytes(raw)
+    elif not isinstance(raw, (bytes, bytearray)):
+        raw = str(raw).encode("utf-8")
+    else:
+        raw = bytes(raw)
+    content_type = "application/pdf" if raw[:4] == b"%PDF" else "text/plain; charset=utf-8"
+    return StarletteResponse(content=raw, media_type=content_type)
 
 
 @ar("/sanitize-pii")
