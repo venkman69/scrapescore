@@ -9,7 +9,8 @@ import os
 import tempfile
 from fasthtml.common import *
 from monsterui.all import *
-from .db import get_profiles_for_user, get_profile, save_profile, update_profile_by_rowid, delete_profile, save_resume_blob
+from .db import get_profiles_for_user, get_profile, save_profile, update_profile_by_rowid, delete_profile, save_resume_blob, save_ats_score
+from .lib.gemini_ai_runner import analyze_resume_ats
 from .lib.config import BASE_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,129 @@ def _render_list_items(field_id: str, items: list[str]) -> FT:
     )
 
 
+_ATS_SECTIONS = [
+    ("Resume Basics", [
+        ("resume_clarity", "Resume Clarity"),
+        ("contact_information", "Contact Information"),
+        ("chronological_order", "Chronological Order"),
+        ("formatting", "Formatting"),
+        ("resume_length", "Resume Length"),
+    ]),
+    ("Summary Strength", [
+        ("headline", "Headline"),
+        ("summary", "Summary"),
+    ]),
+    ("Experience Audit", [
+        ("experience_details", "Experience Details"),
+        ("recent_experience", "Recent Experience"),
+        ("role_separation", "Role Separation"),
+    ]),
+    ("Achievements", [
+        ("quantified_achievements", "Quantified Achievements"),
+        ("technologies", "Technologies"),
+        ("numbers_placement", "Numbers Placement"),
+    ]),
+    ("Language & Tone", [
+        ("verb_usage", "Verb Usage"),
+        ("grammar", "Grammar"),
+        ("punctuation", "Punctuation"),
+        ("voice_and_terse", "Voice & Terse"),
+    ]),
+    ("Visual Impact", [
+        ("text_format", "Text Format"),
+        ("layout", "Layout"),
+        ("font_styles", "Font Styles"),
+        ("file_size", "File Size"),
+    ]),
+]
+
+
+def _score_badge(score: int) -> FT:
+    color = (
+        "bg-green-100 text-green-800" if score >= 8
+        else "bg-yellow-100 text-yellow-800" if score >= 5
+        else "bg-red-100 text-red-800"
+    )
+    return Span(f"{score}/10", cls=f"inline-block px-2 py-0.5 rounded text-xs font-bold {color}")
+
+
+def _render_ats_results(ats_json_str: str) -> FT | str:
+    """Render stored ATS analysis JSON as grouped score cards."""
+    try:
+        data = json.loads(ats_json_str) if ats_json_str else {}
+    except (json.JSONDecodeError, TypeError):
+        data = {}
+    if not data:
+        return ""
+
+    section_cards = []
+    for section_title, fields in _ATS_SECTIONS:
+        rows = []
+        for key, label in fields:
+            cat = data.get(key, {})
+            if not cat:
+                continue
+            rows.append(
+                Div(
+                    Div(
+                        Span(label, cls="text-xs font-medium text-slate-700 dark:text-slate-300"),
+                        _score_badge(cat.get("score", 0)),
+                        cls="flex items-center justify-between",
+                    ),
+                    P(cat.get("analysis", ""), cls="text-xs text-slate-500 mt-0.5"),
+                    cls="py-1 border-b border-slate-100 dark:border-slate-700 last:border-0",
+                )
+            )
+        if rows:
+            section_cards.append(
+                Div(
+                    H4(section_title, cls="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2"),
+                    *rows,
+                    cls="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mb-3",
+                )
+            )
+
+    # ATS Summary
+    interp = data.get("ats_interpretation", {})
+    titles = data.get("top_matching_job_titles", [])
+    skills = data.get("key_skills_recognized", [])
+
+    def _chips(items: list, color: str) -> FT:
+        return Div(
+            *[Span(item, cls=f"inline-block px-2 py-0.5 rounded-full text-xs {color} mr-1 mb-1") for item in items],
+            cls="flex flex-wrap mt-1",
+        )
+
+    summary_card = Div(
+        H4("ATS Summary", cls="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2"),
+        Div(
+            Div(
+                Span("ATS Interpretation", cls="text-xs font-medium text-slate-700 dark:text-slate-300"),
+                _score_badge(interp.get("score", 0)),
+                cls="flex items-center justify-between",
+            ),
+            P(interp.get("analysis", ""), cls="text-xs text-slate-500 mt-0.5"),
+            cls="py-1 border-b border-slate-100 dark:border-slate-700",
+        ) if interp else "",
+        Div(
+            P("Top Matching Job Titles", cls="text-xs font-medium text-slate-700 dark:text-slate-300 mt-2"),
+            _chips(titles, "bg-blue-100 text-blue-800"),
+        ) if titles else "",
+        Div(
+            P("Key Skills Recognized", cls="text-xs font-medium text-slate-700 dark:text-slate-300 mt-2"),
+            _chips(skills, "bg-green-100 text-green-800"),
+        ) if skills else "",
+        cls="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mb-3",
+    )
+
+    return Div(
+        H3("ATS Resume Analysis", cls="text-base font-bold text-slate-900 dark:text-slate-100 mb-3"),
+        *section_cards,
+        summary_card,
+        cls="mt-2",
+    )
+
+
 def _profile_form(profile: dict | None = None) -> FT:
     """Editable form for creating or editing a profile."""
     creating = profile is None
@@ -213,6 +337,7 @@ def _profile_form(profile: dict | None = None) -> FT:
     has_pdf_blob = bool(_blob and _blob[:4] == b"%PDF")
     has_text_blob = bool(_blob and not has_pdf_blob)
     blob_text = _blob.decode("utf-8", errors="replace") if has_text_blob else ""
+    existing_ats_json = (profile.get("ats_score") or "{}") if profile else "{}"
 
     # Get current values with defaults
     resume_val = profile.get("resume", "") if profile else ""
@@ -280,7 +405,19 @@ def _profile_form(profile: dict | None = None) -> FT:
                         onclick="document.getElementById('resume_file_input').click()",
                     ),
                     Span("or drag & drop a file below", cls="text-xs text-gray-400 self-center"),
-                    cls="flex gap-2 mt-2 items-center",
+                    Button(
+                        "ATS Resume Analysis",
+                        type="button",
+                        id="ats_analyze_btn",
+                        cls="uk-button uk-button-primary uk-button-small ml-4",
+                        hx_post=f"{BASE_PREFIX}/profiles/analyze-ats",
+                        hx_include="#profile_name_hidden",
+                        hx_target="#ats_results_section",
+                        hx_swap="innerHTML",
+                        hx_indicator="#ats_spinner",
+                    ),
+                    Span("see bottom of page for results", cls="text-xs text-gray-400 self-center"),
+                    cls="flex gap-2 mt-2 items-center flex-wrap",
                 ),
                 Input(
                     type="file",
@@ -337,6 +474,17 @@ def _profile_form(profile: dict | None = None) -> FT:
                         ] if has_text_blob else []
                     ),
                     id="original_resume_section",
+                ),
+                Div(
+                    Div(cls="uk-spinner", uk_spinner=True),
+                    Span("AI is analyzing your resume... this may take 30-60 seconds.", cls="ml-2 text-sm text-slate-500"),
+                    id="ats_spinner",
+                    cls="htmx-indicator flex items-center my-2",
+                ),
+                Div(
+                    _render_ats_results(existing_ats_json),
+                    id="ats_results_section",
+                    cls="mt-4",
                 ),
                 open=bool(resume_val),
             ),
@@ -783,6 +931,26 @@ async def post_render_list(field_id: str, items: str = "[]"):
     except (json.JSONDecodeError, TypeError):
         item_list = []
     return _render_list_items(field_id, item_list)
+
+
+@ar("/analyze-ats")
+def post_analyze_ats(auth, profile_name: str = ""):
+    """Run ATS resume quality analysis via Gemini and persist the result."""
+    if not profile_name:
+        return Alert("Please enter a profile name first.", cls=AlertT.error)
+    profile = get_profile(profile_name, auth)
+    if not profile or not profile.get("resume"):
+        return Alert("No resume text found. Please upload a resume first.", cls=AlertT.error)
+    try:
+        result = analyze_resume_ats(profile["resume"])
+        if "error" in result:
+            return Alert(f"Analysis error: {result['error']}", cls=AlertT.error)
+        ats_json = json.dumps(result)
+        save_ats_score(profile_name, auth, ats_json)
+        return _render_ats_results(ats_json)
+    except Exception as e:
+        logger.exception("ATS analysis failed")
+        return Alert(f"Analysis failed: {str(e)}", cls=AlertT.error)
 
 
 @ar("/upload-resume")

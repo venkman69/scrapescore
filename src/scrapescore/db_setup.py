@@ -136,6 +136,7 @@ def create_job_profiles_table(cursor):
             profile_name TEXT PRIMARY KEY,
             resume TEXT NOT NULL DEFAULT '',
             resume_blob BLOB,
+            ats_score TEXT NOT NULL DEFAULT '{}',
             desired_role_description TEXT NOT NULL DEFAULT '',
             additional_skills TEXT NOT NULL DEFAULT '',
             us_citizen INTEGER NOT NULL DEFAULT 0,
@@ -248,6 +249,7 @@ def setup_database(db_path: Path = None) -> sqlite3.Connection:
     create_job_details_table(cursor)
     create_job_profiles_table(cursor)
     add_column_if_not_exists(cursor, 'job_profiles', 'resume_blob', 'BLOB')
+    add_column_if_not_exists(cursor, 'job_profiles', 'ats_score', "TEXT NOT NULL DEFAULT '{}'")
     create_applied_job_status_history_table(cursor)
     create_scraping_logs_table(cursor)
     create_scraper_configs_table(cursor)

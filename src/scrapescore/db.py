@@ -129,6 +129,18 @@ def save_resume_blob(profile_name: str, owning_user: str, blob_bytes: bytes):
     conn.close()
 
 
+def save_ats_score(profile_name: str, owning_user: str, ats_score_json: str):
+    """Store ATS resume analysis JSON without touching any other profile field."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE job_profiles SET ats_score = ? WHERE profile_name = ? AND owning_user = ?",
+        (ats_score_json, profile_name, owning_user),
+    )
+    conn.commit()
+    conn.close()
+
+
 def delete_profile(profile_name: str, owning_user: str):
     """Delete a profile by name and owner."""
     conn = get_db_connection()

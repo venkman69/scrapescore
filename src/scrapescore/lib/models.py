@@ -191,5 +191,48 @@ class ATSScoreResult(BaseModel):
 
 
 # ============================================================================
+# ATS Resume Quality Models (JIRA-001)
+# ============================================================================
+
+class ATSCategoryScore(BaseModel):
+    score: int    # 1-10
+    analysis: str
+
+
+class ATSResumeResult(BaseModel):
+    # Resume Basics
+    resume_clarity: ATSCategoryScore
+    contact_information: ATSCategoryScore
+    chronological_order: ATSCategoryScore
+    formatting: ATSCategoryScore
+    resume_length: ATSCategoryScore
+    # Summary Strength
+    headline: ATSCategoryScore
+    summary: ATSCategoryScore
+    # Experience Audit
+    experience_details: ATSCategoryScore
+    recent_experience: ATSCategoryScore
+    role_separation: ATSCategoryScore
+    # Achievements
+    quantified_achievements: ATSCategoryScore
+    technologies: ATSCategoryScore
+    numbers_placement: ATSCategoryScore
+    # Language and Tone
+    verb_usage: ATSCategoryScore
+    grammar: ATSCategoryScore
+    punctuation: ATSCategoryScore
+    voice_and_terse: ATSCategoryScore
+    # Visual Impact
+    text_format: ATSCategoryScore
+    layout: ATSCategoryScore
+    font_styles: ATSCategoryScore
+    file_size: ATSCategoryScore
+    # ATS Summary
+    ats_interpretation: ATSCategoryScore
+    top_matching_job_titles: list[str]
+    key_skills_recognized: list[str]
+
+
+# ============================================================================
 # End of ATS Scoring Models
 # ============================================================================

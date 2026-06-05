@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from scrapescore.lib.gemini_client import GeminiClient
 from scrapescore.lib.models import (
+    ATSResumeResult,
     ATSScoreResult,
     CitizenshipStatus,
     ClearanceStatus,
@@ -99,6 +100,65 @@ def run_gemini_automation(
         return extract_and_validate_json(raw_text, model)
 
     return {"error": "No response content from gemini_ai_runner"}
+
+
+def analyze_resume_ats(resume_text: str) -> dict:
+    """
+    Evaluate a resume against 24 ATS quality criteria using Gemini.
+
+    Returns a dict matching ATSResumeResult, or {"error": "..."} on failure.
+    """
+    schema = ATSResumeResult.model_json_schema()
+    prompt = f"""As an automated applicant tracking system resume quality evaluator, \
+evaluate the resume below and assign a score (1-10) for each category. \
+Also provide a one-sentence analysis for each scored category.
+
+Categories:
+Resume Basics
+1. Resume Clarity
+2. Contact Information
+3. Chronological Order
+4. Formatting
+5. Resume Length
+---
+Summary Strength
+6. Headline
+7. Summary
+---
+Experience Audit
+8. Experience Details
+9. Recent Experience
+10. Role Separation
+---
+Achievements
+11. Quantified Achievements
+12. Technologies
+13. Numbers Placement
+---
+Language and Tone
+14. Verb Usage
+15. Grammar
+16. Punctuation
+17. Voice and Terse
+---
+Visual Impact
+18. Text Format
+19. Layout
+20. Font Styles
+21. File Size
+---
+ATS Summary
+22. How well ATS interprets the resume (score + analysis)
+23. Top matching job titles for the resume (list of strings, no scores)
+24. Key Skills ATS recognizes in your resume (list of strings)
+
+Resume:
+{resume_text}
+
+Respond ONLY with valid JSON matching this exact schema — no markdown, no explanation:
+{json.dumps(schema, indent=2)}
+"""
+    return run_gemini_automation(prompt, ATSResumeResult)
 
 
 def redact_resume_or_jd(md_text: str) -> str:
