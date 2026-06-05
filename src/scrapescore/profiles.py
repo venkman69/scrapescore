@@ -271,6 +271,30 @@ def _profile_form(profile: dict | None = None) -> FT:
                     ),
                 ),
                 Div(
+                    Button(
+                        "Upload Resume",
+                        type="button",
+                        cls="uk-button uk-button-default uk-button-small",
+                        onclick="document.getElementById('resume_file_input').click()",
+                    ),
+                    Span("or drag & drop a file below", cls="text-xs text-gray-400 self-center"),
+                    cls="flex gap-2 mt-2 items-center",
+                ),
+                Input(
+                    type="file",
+                    name="resume_file",
+                    accept=".pdf,.txt,.md",
+                    id="resume_file_input",
+                    onchange="uploadAndConvertResume(this, 'resume_textarea')",
+                    style="display:none",
+                ),
+                P(
+                    "Extracted Text",
+                    id="resume_extracted_label",
+                    cls="text-xs text-gray-500 mt-2 mb-1",
+                    style=("" if has_pdf_blob else "display:none"),
+                ),
+                Div(
                     TextArea(
                         resume_val,
                         rows=5,
@@ -282,28 +306,10 @@ def _profile_form(profile: dict | None = None) -> FT:
                         cls="w-full",
                     ),
                     id="resume_dropzone",
-                    cls="mt-2 border-2 border-dashed border-gray-300 rounded p-2",
+                    cls="mt-1 border-2 border-dashed border-gray-300 rounded p-2",
                     ondragover="resumeDragOver(event)",
                     ondragleave="resumeDragLeave(event)",
                     ondrop="resumeDrop(event, 'resume_textarea')",
-                ),
-                Div(
-                    Button(
-                        "Upload Resume",
-                        type="button",
-                        cls="uk-button uk-button-default uk-button-small",
-                        onclick="document.getElementById('resume_file_input').click()",
-                    ),
-                    Span("or drag & drop a file above", cls="text-xs text-gray-400 self-center"),
-                    cls="flex gap-2 mt-1 items-center",
-                ),
-                Input(
-                    type="file",
-                    name="resume_file",
-                    accept=".pdf,.txt,.md",
-                    id="resume_file_input",
-                    onchange="uploadAndConvertResume(this, 'resume_textarea')",
-                    style="display:none",
                 ),
                 Div(id="resume_preview", cls="mt-1 text-sm text-gray-600"),
                 Div(
@@ -545,13 +551,17 @@ def _profile_form(profile: dict | None = None) -> FT:
                     preview.innerHTML = 'Successfully uploaded ' + file.name;
                     preview.className = 'mt-2 text-sm text-blue-600 font-semibold';
                 }
+                const extractedLabel = document.getElementById('resume_extracted_label');
                 if (fileName.endsWith('.pdf')) {
+                    if (extractedLabel) extractedLabel.style.display = '';
                     const profileNameEl = document.getElementById('profile_name_hidden');
                     const pname = profileNameEl ? encodeURIComponent(profileNameEl.value) : '';
                     const expander = document.getElementById('pdf_preview_expander');
                     if (expander) {
                         expander.innerHTML = '<details><summary class="text-xs cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 mt-1">View Resume</summary><div class="mt-1"><iframe src="' + _PROFILES_PREFIX + '/profiles/resume-pdf?profile_name=' + pname + '" width="100%" height="500" style="border:1px solid #ccc;border-radius:4px;display:block;"></iframe></div></details>';
                     }
+                } else {
+                    if (extractedLabel) extractedLabel.style.display = 'none';
                 }
                 triggerAutosave();
             })
