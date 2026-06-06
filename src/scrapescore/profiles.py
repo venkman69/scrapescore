@@ -317,11 +317,15 @@ def _render_ats_results(ats_json_str: str) -> FT | str:
         cls="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mb-3",
     )
 
-    return Div(
-        H3("ATS Resume Analysis", cls="text-base font-bold text-slate-900 dark:text-slate-100 mb-3"),
-        *section_cards,
-        summary_card,
-        cls="mt-2",
+    return Details(
+        Summary("ATS Resume Analysis", cls="cursor-pointer text-sm font-semibold text-slate-800 dark:text-slate-200 py-1"),
+        Div(
+            *section_cards,
+            summary_card,
+            cls="mt-2",
+        ),
+        open=True,
+        cls="mt-2 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2",
     )
 
 
