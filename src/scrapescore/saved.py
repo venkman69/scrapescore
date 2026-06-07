@@ -259,7 +259,7 @@ def get_job_detail(job_id: int, auth):
         hx_post=f"/search/reject/{job_id}",
         hx_target=f"#job-card-{job_id}",
         hx_swap="outerHTML",
-        cls=f"{_detail_btn} text-destructive border-destructive/30 hover:bg-destructive/10",
+        cls=f"{_detail_btn} text-destructive border-destructive/30 hover:bg-destructive/10 dark:text-red-400 dark:border-red-700/50 dark:hover:bg-red-900/20",
     )
 
     profile_options = [Option("-- Select Profile --", value="")] + [

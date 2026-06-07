@@ -275,7 +275,7 @@ def _job_card(job, route_prefix="search"):
         hx_swap="outerHTML",
         hx_include="#filter-form",
         onclick=_stop,
-        cls=f"{_btn_base} hover:text-destructive",
+        cls=f"{_btn_base} text-muted-foreground hover:text-red-500 transition-colors",
         title="Reject",
     )
 
