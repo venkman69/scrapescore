@@ -18,6 +18,7 @@ from .db import (
     get_applied_jobs_for_user,
     get_applied_job_by_id,
     withdraw_job,
+    move_applied_to_saved,
     get_applied_status_history,
     add_applied_status_event,
     update_applied_job_notes,
@@ -798,6 +799,15 @@ def get_job_detail(job_id: int, auth):
         cls=f"{_detail_btn} text-destructive border-destructive/30 hover:bg-destructive/10 dark:text-red-400 dark:border-red-700/50 dark:hover:bg-red-900/20",
     )
 
+    move_to_saved_btn = Button(
+        UkIcon("bookmark", ratio=0.85), Span("Move to Saved"),
+        hx_post=f"/applied/move-to-saved/{job_id}",
+        hx_target=f"#job-card-{job_id}",
+        hx_swap="outerHTML",
+        hx_confirm="Move this job to Saved? Applied history will be cleared.",
+        cls=f"{_detail_btn} text-blue-600 border-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-700/50 dark:hover:bg-blue-900/20",
+    )
+
     score_btn_cls = _sm_btn + (" opacity-50 cursor-not-allowed" if not has_description else "")
 
     stored_score_html = None
@@ -823,7 +833,7 @@ def get_job_detail(job_id: int, auth):
         ),
         # Editable job fields
         _job_fields_section(job, job_id),
-        Div(withdraw_btn, cls="flex gap-4 mt-2 flex-wrap"),
+        Div(withdraw_btn, move_to_saved_btn, cls="flex gap-4 mt-2 flex-wrap"),
         # Job Notes
         Div(
             H4("Job Notes", cls="text-sm font-semibold"),
@@ -1026,6 +1036,20 @@ def post_withdraw(job_id: int, auth):
         Div(id=f"job-card-{job_id}"),
         Div(
             P("Job withdrawn. Select another job to view details.", cls="text-muted-foreground text-sm p-4"),
+            id="job-detail-pane",
+            hx_swap_oob="innerHTML",
+        ),
+    )
+
+
+@applied_rt("/move-to-saved/{job_id}", methods=["POST"])
+def post_move_to_saved(job_id: int, auth):
+    user = get_auth_user(auth)
+    move_applied_to_saved(job_id, user)
+    return (
+        Div(id=f"job-card-{job_id}"),
+        Div(
+            P("Job moved to Saved. Select another job to view details.", cls="text-muted-foreground text-sm p-4"),
             id="job-detail-pane",
             hx_swap_oob="innerHTML",
         ),

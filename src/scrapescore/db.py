@@ -568,6 +568,31 @@ def withdraw_job(job_id: int, owning_user: str) -> bool:
         conn.close()
 
 
+def move_applied_to_saved(job_id: int, owning_user: str) -> bool:
+    """Move an applied job back to saved: clear applied state and set review_status='saved'."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM applied_job_status_history WHERE applied_job_id = ?",
+            (job_id,),
+        )
+        cursor.execute(
+            """UPDATE job_details
+               SET review_status = 'saved', applied_at = NULL, job_notes = '', resume = NULL
+               WHERE id = ? AND owning_user = ?""",
+            (job_id, owning_user),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        _logger.error(f"move_applied_to_saved error: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
 def get_applied_status_history(job_id: int) -> list[dict]:
     """All history rows for a job, newest first."""
     conn = get_db_connection()

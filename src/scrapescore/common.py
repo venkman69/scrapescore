@@ -21,7 +21,7 @@ document.addEventListener('htmx:confirm', function(e) {
   if (!e.detail.question) return;
   e.preventDefault();
   UIkit.modal.confirm(e.detail.question).then(
-    function() { e.detail.issueRequest(); },
+    function() { e.detail.issueRequest(true); },
     function() {}
   );
 });
