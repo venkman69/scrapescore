@@ -624,13 +624,14 @@ def main(
                     google_search_term = (
                         f"{keyword} {user_config['location']} since yesterday"
                     )
+                    results_wanted = config.get("scraper", {}).get("results_wanted", 20)
                     jobs = scrape_jobs(
                         site_name=user_config["site_names"],
                         search_term=keyword,
                         google_search_term=google_search_term,
                         location=user_config["location"],
                         hours_old=user_config["hours_old"],
-                        results_wanted=20,
+                        results_wanted=results_wanted,
                         country_indeed="USA",
                         run_id=run_id,
                         job_finder_config=user_config,

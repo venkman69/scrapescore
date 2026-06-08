@@ -10,6 +10,9 @@ server:
 
 hours_old: 168 # 1 week
 
+scraper:
+  results_wanted: 50
+
 retention_days: 60
 
 site_names:

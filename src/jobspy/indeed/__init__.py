@@ -68,7 +68,7 @@ class Indeed(Scraper):
 
         cursor = None
         logger.info(f"*** Scraping Indeed with criteria: {scraper_input.search_term} ***")
-        while len(self.seen_urls) < scraper_input.results_wanted + scraper_input.offset:
+        while len(job_list) < scraper_input.results_wanted + scraper_input.offset:
             logger.info(
                 f"search page: {page} / {math.ceil(scraper_input.results_wanted / self.jobs_per_page)}"
             )
@@ -207,6 +207,8 @@ class Indeed(Scraper):
         if job_url in self.seen_urls:
             return
         self.seen_urls.add(job_url)
+        if self._check_if_job_exists(job_url):
+            return None
         description = f"{self.base_url}/viewjob?jk={job['key']}\n"
         description +=  job["description"]["html"]
         if self.scraper_input.description_format == DescriptionFormat.MARKDOWN:
