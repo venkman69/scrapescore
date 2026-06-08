@@ -9,7 +9,7 @@ from fasthtml.common import *
 from monsterui.all import *
 
 from .common import NavigationLayout, get_auth_user
-from .db import get_profiles_for_user, get_profile, create_applied_job, update_job_score
+from .db import get_profiles_for_user, get_profile, create_applied_job, update_job_score, _clearance_required_from_result
 from .lib.config import BASE_PREFIX
 from scrapescore.lib import utils
 from scrapescore.lib.gemini_ai_runner import ats_score_analyzer_gemini
@@ -460,7 +460,8 @@ def post_add_to_db(
         try:
             result = json.loads(score_json_result)
             numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
-            update_job_score(new_id, numeric_score, score_json_result, user)
+            clearance = _clearance_required_from_result(result)
+            update_job_score(new_id, numeric_score, score_json_result, user, clearance)
         except Exception:
             logger.warning("Score JSON could not be saved for new job %s", new_id)
 

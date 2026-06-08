@@ -420,13 +420,37 @@ def update_title_compatibility_score(job_id: int, score: str, owning_user: str) 
     conn.close()
 
 
-def update_job_score(job_id: int, score: float, score_json: str, owning_user: str) -> None:
+def _clearance_required_from_result(result: dict) -> int:
+    if not isinstance(result, dict):
+        return 0
+    if result.get("schema_version") == "1.0":
+        from .lib.models import ClearanceStatus
+        status = result.get("clearance_assessment", {}).get("status", "")
+        return 1 if status == ClearanceStatus.ACTIVE_REQUIRED.value else 0
+    sc = result.get("security_clearances", {})
+    if isinstance(sc, dict):
+        if sc.get("matching_security_clearances_count", 0) > 0 or \
+           sc.get("missing_security_clearances_count", 0) > 0:
+            return 1
+    return 0
+
+
+def update_job_score(
+    job_id: int, score: float, score_json: str, owning_user: str,
+    security_clearance_required: int | None = None,
+) -> None:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE job_details SET job_score = ?, job_score_json = ? WHERE id = ? AND owning_user = ?",
-        (score, score_json, job_id, owning_user),
-    )
+    if security_clearance_required is not None:
+        cursor.execute(
+            "UPDATE job_details SET job_score = ?, job_score_json = ?, security_clearance_required = ? WHERE id = ? AND owning_user = ?",
+            (score, score_json, security_clearance_required, job_id, owning_user),
+        )
+    else:
+        cursor.execute(
+            "UPDATE job_details SET job_score = ?, job_score_json = ? WHERE id = ? AND owning_user = ?",
+            (score, score_json, job_id, owning_user),
+        )
     conn.commit()
     conn.close()
 

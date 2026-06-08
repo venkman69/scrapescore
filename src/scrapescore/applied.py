@@ -29,6 +29,7 @@ from .db import (
     get_default_profile,
     update_job_description,
     update_job_score,
+    _clearance_required_from_result,
 )
 from .score import render_ats_score
 from scrapescore.lib.gemini_ai_runner import ats_score_analyzer_gemini
@@ -1160,7 +1161,8 @@ def post_score(job_id: int, description: str, auth):
         if "error" in result:
             return Alert(f"Scoring Error: {result['error']}", cls=AlertT.error)
         numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
-        update_job_score(job_id, numeric_score, json.dumps(result), user)
+        clearance = _clearance_required_from_result(result)
+        update_job_score(job_id, numeric_score, json.dumps(result), user, clearance)
         return render_ats_score(result)
     except Exception as e:
         logger.exception("Applied scoring failed")
