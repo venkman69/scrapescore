@@ -643,6 +643,25 @@ def add_applied_status_event(job_id: int, status: str, notes: str, changed_at: s
     conn.close()
 
 
+def delete_applied_status_event(event_id: int) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM applied_job_status_history WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+
+
+def update_applied_status_event(event_id: int, status: str, notes: str, changed_at: str) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE applied_job_status_history SET status = ?, notes = ?, changed_at = ? WHERE id = ?",
+        (status, notes, changed_at, event_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def update_applied_job_notes(job_id: int, notes: str, owning_user: str) -> None:
     conn = get_db_connection()
     cursor = conn.cursor()

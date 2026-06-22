@@ -7,6 +7,7 @@ Scoring uses the resume blob stored at application time, with fallback to profil
 import io
 import json
 import logging
+import sqlite3
 
 from fasthtml.common import *
 from monsterui.all import *
@@ -15,12 +16,15 @@ from .common import NavigationLayout, get_auth_user
 from .lib.config import BASE_PREFIX
 from .profiles import remove_pii
 from .db import (
+    get_db_connection,
     get_applied_jobs_for_user,
     get_applied_job_by_id,
     withdraw_job,
     move_applied_to_saved,
     get_applied_status_history,
     add_applied_status_event,
+    delete_applied_status_event,
+    update_applied_status_event,
     update_applied_job_notes,
     update_applied_job_resume,
     update_applied_job_fields,
@@ -551,15 +555,38 @@ def _history_section(job_id: int) -> FT:
 
     timeline = []
     for h in history:
-        status_cls = _STATUS_BADGE_CLS.get(h["status"], "bg-slate-100 text-slate-500")
+        eid = h["id"]
+        event_date = h.get("changed_at", "")[:10]
         timeline.append(
             Div(
+                # View row
                 Div(
                     _status_badge(h["status"]),
-                    Span(h.get("changed_at", "")[:10], cls="text-xs text-muted-foreground ml-2"),
+                    Span(event_date, cls="text-xs text-muted-foreground ml-2"),
+                    Div(
+                        Button(
+                            UkIcon("pencil", ratio=0.7),
+                            hx_get=f"/applied/edit-event-form/{eid}",
+                            hx_target=f"#history-event-{eid}",
+                            hx_swap="outerHTML",
+                            title="Edit",
+                            cls="p-0.5 text-muted-foreground hover:text-foreground transition-colors",
+                        ),
+                        Button(
+                            UkIcon("trash-2", ratio=0.7),
+                            hx_delete=f"/applied/delete-event/{eid}",
+                            hx_target=f"#history-{job_id}",
+                            hx_swap="outerHTML",
+                            hx_confirm="Delete this status event?",
+                            title="Delete",
+                            cls="p-0.5 text-muted-foreground hover:text-destructive transition-colors",
+                        ),
+                        cls="flex items-center gap-1 ml-auto",
+                    ),
                     cls="flex items-center",
                 ),
                 P(h.get("notes") or "", cls="text-xs text-muted-foreground mt-0.5") if h.get("notes") else None,
+                id=f"history-event-{eid}",
                 cls="border-l-2 border-slate-200 dark:border-slate-700 pl-2 py-0.5",
             )
         )
@@ -1072,6 +1099,125 @@ def post_add_event(job_id: int, status: str, auth, notes: str = "", changed_at: 
     if not changed_at:
         changed_at = _date.today().isoformat()
     add_applied_status_event(job_id, status, notes, changed_at)
+    return _history_section(job_id)
+
+
+@applied_rt("/edit-event-form/{event_id}", methods=["GET"])
+def get_edit_event_form(event_id: int, auth):
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM applied_job_status_history WHERE id = ?", (event_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return Span("Event not found.", cls="text-xs text-destructive")
+    h = dict(row)
+    job_id = h["applied_job_id"]
+    status_opts = [
+        Option(label, value=val, selected=(val == h["status"])) for val, label in _ALL_STATUSES
+    ]
+    _sm_btn = f"{ButtonT.default} text-xs"
+    return Div(
+        Form(
+            Div(
+                Select(*status_opts, name="status", cls="text-xs flex-1"),
+                Input(name="changed_at", type="date", value=(h.get("changed_at") or "")[:10], cls="text-xs w-32"),
+                cls="flex flex-wrap gap-2 items-center",
+            ),
+            TextArea(h.get("notes") or "", name="notes", rows=2, cls="text-xs w-full mt-1"),
+            Div(
+                Button(
+                    "Save",
+                    hx_post=f"/applied/save-event/{event_id}",
+                    hx_target=f"#history-event-{event_id}",
+                    hx_swap="outerHTML",
+                    hx_include=f"#edit-event-form-{event_id}",
+                    cls=_sm_btn,
+                ),
+                Button(
+                    "Cancel",
+                    hx_get=f"/applied/event-row/{event_id}",
+                    hx_target=f"#history-event-{event_id}",
+                    hx_swap="outerHTML",
+                    cls=_sm_btn,
+                    type="button",
+                ),
+                cls="flex gap-2 mt-1",
+            ),
+            id=f"edit-event-form-{event_id}",
+        ),
+        id=f"history-event-{event_id}",
+        cls="border-l-2 border-blue-300 dark:border-blue-700 pl-2 py-0.5",
+    )
+
+
+@applied_rt("/event-row/{event_id}", methods=["GET"])
+def get_event_row(event_id: int, auth):
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM applied_job_status_history WHERE id = ?", (event_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return Div(id=f"history-event-{event_id}")
+    h = dict(row)
+    job_id = h["applied_job_id"]
+    event_date = (h.get("changed_at") or "")[:10]
+    return Div(
+        Div(
+            _status_badge(h["status"]),
+            Span(event_date, cls="text-xs text-muted-foreground ml-2"),
+            Div(
+                Button(
+                    UkIcon("pencil", ratio=0.7),
+                    hx_get=f"/applied/edit-event-form/{event_id}",
+                    hx_target=f"#history-event-{event_id}",
+                    hx_swap="outerHTML",
+                    title="Edit",
+                    cls="p-0.5 text-muted-foreground hover:text-foreground transition-colors",
+                ),
+                Button(
+                    UkIcon("trash-2", ratio=0.7),
+                    hx_delete=f"/applied/delete-event/{event_id}",
+                    hx_target=f"#history-{job_id}",
+                    hx_swap="outerHTML",
+                    hx_confirm="Delete this status event?",
+                    title="Delete",
+                    cls="p-0.5 text-muted-foreground hover:text-destructive transition-colors",
+                ),
+                cls="flex items-center gap-1 ml-auto",
+            ),
+            cls="flex items-center",
+        ),
+        P(h.get("notes") or "", cls="text-xs text-muted-foreground mt-0.5") if h.get("notes") else None,
+        id=f"history-event-{event_id}",
+        cls="border-l-2 border-slate-200 dark:border-slate-700 pl-2 py-0.5",
+    )
+
+
+@applied_rt("/save-event/{event_id}", methods=["POST"])
+def post_save_event(event_id: int, auth, status: str = "", notes: str = "", changed_at: str = ""):
+    from datetime import date as _date
+    if not changed_at:
+        changed_at = _date.today().isoformat()
+    update_applied_status_event(event_id, status, notes, changed_at)
+    return get_event_row(event_id, auth)
+
+
+@applied_rt("/delete-event/{event_id}", methods=["DELETE"])
+def delete_event(event_id: int, auth):
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT applied_job_id FROM applied_job_status_history WHERE id = ?", (event_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return P("Event not found.", cls="text-xs text-destructive")
+    job_id = row["applied_job_id"]
+    delete_applied_status_event(event_id)
     return _history_section(job_id)
 
 
