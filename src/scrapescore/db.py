@@ -744,6 +744,61 @@ def create_applied_job(job_data: dict, owning_user: str) -> int:
         conn.close()
 
 
+def create_saved_job(job_data: dict, owning_user: str) -> int:
+    """Insert a manually-created saved job (review_status='saved')."""
+    from datetime import datetime as _dt
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    today = _dt.now().strftime("%Y-%m-%d")
+    try:
+        cursor.execute(
+            """
+            INSERT INTO job_details (
+                job_url, site, title, company, location, job_type,
+                date_posted, interval, min_amount, max_amount, currency,
+                is_remote, num_urgent_words, benefits, emails, description,
+                job_score, job_score_json, security_clearance_required,
+                review_status, date_created, owning_user, applied_at, job_notes
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                job_data.get("job_url", ""),
+                "manual",
+                job_data.get("title", ""),
+                job_data.get("company", ""),
+                job_data.get("location", ""),
+                "",
+                today,
+                job_data.get("interval", ""),
+                job_data.get("min_amount", ""),
+                job_data.get("max_amount", ""),
+                job_data.get("currency", ""),
+                job_data.get("is_remote", "false"),
+                "0",
+                "",
+                "",
+                job_data.get("description", ""),
+                0,
+                "{}",
+                1 if job_data.get("security_clearance_required") else 0,
+                "saved",
+                today,
+                owning_user,
+                None,
+                "",
+            ),
+        )
+        new_id = cursor.lastrowid
+        conn.commit()
+        return new_id
+    except Exception as e:
+        _logger.error(f"create_saved_job error: {e}")
+        conn.rollback()
+        return 0
+    finally:
+        conn.close()
+
+
 def update_applied_job_fields(
     job_id: int, owning_user: str,
     title: str = "", job_url: str = "", company: str = "",

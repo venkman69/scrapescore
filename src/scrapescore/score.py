@@ -9,7 +9,7 @@ from fasthtml.common import *
 from monsterui.all import *
 
 from .common import NavigationLayout, get_auth_user
-from .db import get_profiles_for_user, get_profile, create_applied_job, update_job_score, _clearance_required_from_result
+from .db import get_profiles_for_user, get_profile, create_applied_job, create_saved_job, update_job_score, _clearance_required_from_result
 from .lib.config import BASE_PREFIX
 from scrapescore.lib import utils
 from scrapescore.lib.gemini_ai_runner import ats_score_analyzer_gemini
@@ -149,6 +149,100 @@ def _add_to_applied_accordion():
     )
 
 
+def _add_to_saved_accordion():
+    _lbl = "text-xs font-medium shrink-0 w-16"
+    _inp = "text-sm flex-1 min-w-0"
+    _row_cls = "flex items-center gap-2"
+
+    def _field(label, **kw):
+        return Div(Label(label, cls=_lbl), Input(cls=_inp, **kw), cls=_row_cls)
+
+    def _toggle(label, **kw):
+        return Label(
+            Switch(cls="shrink-0", **kw),
+            Span(label, cls="text-xs font-medium ml-2 cursor-pointer select-none"),
+            cls="flex items-center gap-2 cursor-pointer",
+        )
+
+    return Div(
+        Ul(
+            Li(
+                Div(
+                    DivFullySpaced(
+                        DivLAligned(UkIcon("bookmark", ratio=0.9, cls="mr-1"), Span("Add to Saved Jobs", cls="text-sm font-medium")),
+                        UkIcon("chevron-down", cls="transition-transform duration-200"),
+                    ),
+                    cls="uk-accordion-title flex items-center justify-between cursor-pointer rounded border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800",
+                ),
+                Div(
+                    Form(
+                        Input(type="hidden", id="score_json_result_saved", name="score_json_result", value=""),
+                        Div(
+                            _field("Title", name="title", placeholder="Job title"),
+                            Div(
+                                _field("Company", name="company", placeholder="Company name"),
+                                _field("Location", name="location", placeholder="City, State"),
+                                cls="grid grid-cols-1 sm:grid-cols-2 gap-2",
+                            ),
+                            Div(
+                                Span("Salary (USD)", cls="text-xs font-semibold text-muted-foreground"),
+                                Div(
+                                    _field("Min $", name="min_amount", placeholder="100000"),
+                                    _field("Max $", name="max_amount", placeholder="150000"),
+                                    cls="grid grid-cols-1 sm:grid-cols-2 gap-2",
+                                ),
+                                _field("Interval", name="interval", placeholder="yearly / hourly"),
+                                cls="space-y-1.5 border-l-2 border-muted pl-2",
+                            ),
+                            Div(
+                                _toggle("Remote", name="is_remote", value="true"),
+                                _toggle("Clearance Required", name="security_clearance_required", value="1"),
+                                cls="flex flex-col gap-2.5 pt-1",
+                            ),
+                            cls="space-y-2 border rounded p-2",
+                        ),
+                        Div(
+                            Button(
+                                "Add to Saved Jobs",
+                                id="add-saved-btn",
+                                type="submit",
+                                disabled=True,
+                                cls=f"{ButtonT.primary} text-sm mt-3",
+                            ),
+                        ),
+                        Div(id="add-saved-result", cls="mt-2"),
+                        hx_post="/score/add-to-saved",
+                        hx_include="#job_url, #job_text",
+                        hx_target="#add-saved-result",
+                        hx_swap="innerHTML",
+                        cls="p-2",
+                    ),
+                    cls="uk-accordion-content mt-2",
+                ),
+            ),
+            uk_accordion="collapsible: true",
+            cls="uk-accordion",
+        ),
+        Script("""
+(function() {
+  function syncSavedBtn() {
+    var url = document.getElementById('job_url');
+    var btn = document.getElementById('add-saved-btn');
+    if (url && btn) btn.disabled = !url.value.trim();
+  }
+  var url = document.getElementById('job_url');
+  if (url) {
+    url.addEventListener('input', syncSavedBtn);
+    url.addEventListener('change', syncSavedBtn);
+    syncSavedBtn();
+  }
+})();
+"""),
+        id="add-saved-accordion",
+        cls="mt-2",
+    )
+
+
 @score_rt("/")
 def get(auth, sess):
     user = get_auth_user(auth)
@@ -274,6 +368,7 @@ def get(auth, sess):
         job_description_section,
         action_btn,
         _add_to_applied_accordion(),
+        _add_to_saved_accordion(),
         progress_spinner,
         result_section,
         cls="py-8 max-w-4xl",
@@ -415,10 +510,14 @@ def post_calculate(profile_name: str, job_text: str, job_url: str = "", auth=Non
         score_json_str = json.dumps(result)
         return Div(
             render_ats_score(result),
-            # OOB-swap populates the hidden field inside the accordion form
+            # OOB-swap populates the hidden fields inside both accordion forms
             Input(
                 type="hidden", id="score_json_result", name="score_json_result",
                 value=score_json_str, hx_swap_oob="outerHTML:#score_json_result",
+            ),
+            Input(
+                type="hidden", id="score_json_result_saved", name="score_json_result",
+                value=score_json_str, hx_swap_oob="outerHTML:#score_json_result_saved",
             ),
         )
     except Exception as e:
@@ -468,6 +567,50 @@ def post_add_to_db(
     return Alert(
         "Job added. ",
         A("View in Applied tab", href=f"{BASE_PREFIX}/applied/", cls="underline font-medium"),
+        cls=AlertT.success,
+    )
+
+
+@score_rt("/add-to-saved", methods=["POST"])
+def post_add_to_saved(
+    job_text: str = "", job_url: str = "", score_json_result: str = "",
+    title: str = "", company: str = "", location: str = "",
+    min_amount: str = "", max_amount: str = "", interval: str = "",
+    is_remote: str = "", security_clearance_required: str = "",
+    auth=None,
+):
+    user = get_auth_user(auth)
+    if not job_url or not job_url.strip():
+        return Alert("A job URL is required.", cls=AlertT.error)
+
+    job_data = {
+        "job_url": job_url.strip(),
+        "description": job_text,
+        "title": title,
+        "company": company,
+        "location": location,
+        "min_amount": min_amount,
+        "max_amount": max_amount,
+        "interval": interval,
+        "is_remote": "true" if is_remote else "false",
+        "security_clearance_required": bool(security_clearance_required),
+    }
+    new_id = create_saved_job(job_data, user)
+    if not new_id:
+        return Alert("Failed to add job to database.", cls=AlertT.error)
+
+    if score_json_result:
+        try:
+            result = json.loads(score_json_result)
+            numeric_score = result.get("ats_score_estimate", {}).get("total_overall_score", 0)
+            clearance = _clearance_required_from_result(result)
+            update_job_score(new_id, numeric_score, score_json_result, user, clearance)
+        except Exception:
+            logger.warning("Score JSON could not be saved for new saved job %s", new_id)
+
+    return Alert(
+        "Job saved. ",
+        A("View in Saved tab", href=f"{BASE_PREFIX}/saved/", cls="underline font-medium"),
         cls=AlertT.success,
     )
 
