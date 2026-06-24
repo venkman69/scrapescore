@@ -504,7 +504,7 @@ def post_fields(config_type: str, config_json: str = ""):
 @ar("/save", methods=["POST"])
 def post_save(
     auth,
-    config_key: str,
+    config_key: str = "",
     original_key: str = "",
     company_name: str = "",
     config_type: str = "workday",
