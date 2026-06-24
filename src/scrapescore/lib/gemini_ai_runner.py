@@ -169,6 +169,7 @@ def run_gemini_automation(
     provider = llm_cfg.get("provider", "gemini")
 
     if provider == "openai":
+        logger.info(f"LLM provider: openai ({llm_cfg.get('base_url')} / {llm_cfg.get('model')})")
         try:
             return _run_openai_automation(prompt_str, model, llm_cfg)
         except Exception as e:
@@ -184,6 +185,7 @@ def run_gemini_automation(
                 return _run_gemini_redis_automation(prompt_str, model)
             raise
     else:
+        logger.info("LLM provider: gemini (Redis queue)")
         return _run_gemini_redis_automation(prompt_str, model)
 
 
