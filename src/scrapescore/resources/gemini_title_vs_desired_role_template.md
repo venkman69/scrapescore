@@ -1,6 +1,8 @@
 # Goal:
 Review a list of job titles and determine how well it matches the desired role description.
 Score the job title as high, medium or low based on the match.
+<!-- USER -->
+
 # Inputs:
 * Job Titles: 
 --- START OF JOB TITLES ---
@@ -22,18 +24,11 @@ class JobTitleScores(BaseModel):
 ```
 # Example:
 ```json
-[
 {{
-  "job_title": "Job Title 1",
-  "score": "high"
-}},
-{{
-  "job_title": "Job Title 2",
-  "score": "medium"
-}},
-{{
-  "job_title": "Job Title 3",
-  "score": "low"
-}},
-]
+  "scores": [
+    {{"job_title": "Job Title 1", "score": "high"}},
+    {{"job_title": "Job Title 2", "score": "medium"}},
+    {{"job_title": "Job Title 3", "score": "low"}}
+  ]
+}}
 ```

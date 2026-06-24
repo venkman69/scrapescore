@@ -140,7 +140,25 @@ class ATSScoreResult(BaseModel):
 }}
 ```
 
-## Input Data
+<!-- CANDIDATE -->
+
+## Candidate Profile
+
+--- RESUME BEGIN ---
+{resume}
+--- RESUME END ---
+
+--- CANDIDATE'S US CITIZENSHIP STATUS BEGIN ---
+{us_citizen}
+--- CANDIDATE'S US CITIZENSHIP STATUS END ---
+
+--- CANDIDATE'S SECURITY CLEARANCE BEGIN ---
+{security_clearance}
+--- CANDIDATE'S SECURITY CLEARANCE END ---
+
+<!-- USER -->
+
+## Job Input
 
 --- JOB URL BEGIN ---
 {job_url}
@@ -154,20 +172,8 @@ class ATSScoreResult(BaseModel):
 {job_source}
 --- JOB SOURCE END ---
 
---- RESUME BEGIN ---
-{resume}
---- RESUME END ---
-
 --- JOB DESCRIPTION BEGIN ---
 {job_description}
 --- JOB DESCRIPTION END ---
-
---- CANDIDATE'S US CITIZENSHIP STATUS BEGIN ---
-{us_citizen}
---- CANDIDATE'S US CITIZENSHIP STATUS END ---
-
---- CANDIDATE'S SECURITY CLEARANCE BEGIN ---
-{security_clearance}
---- CANDIDATE'S SECURITY CLEARANCE END ---
 
 OUTPUT THE JSON NOW:

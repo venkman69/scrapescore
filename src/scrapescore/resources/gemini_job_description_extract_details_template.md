@@ -42,6 +42,8 @@ Example output:
   "remote": True,
   "job_description": "Job Summary<br> This is a hands-on leadership role focused on security architecture, operations, and risk management within a growing healthcare environment. The ideal candidate is a strategic leader who remains technically proficient enough to design, deploy, and optimize security solutions.<br><br>**Key Responsibilities**<br><br> **Architecture & Deployment**: Lead security architecture and tool..."
 }}
+<!-- USER -->
+
 # Input:
 --- JOB DESCRIPTION BEGIN ---
 {job_description}

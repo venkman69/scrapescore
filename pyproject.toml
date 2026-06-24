@@ -27,6 +27,7 @@ dependencies = [
     "html-to-markdown==2.22.2",
     "tls-client>=1.0.1",
     "pydantic>=2.13.4",
+    "openai>=2.44.0",
 ]
 
 [tool.setuptools]

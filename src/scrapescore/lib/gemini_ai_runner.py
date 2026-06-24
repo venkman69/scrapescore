@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from scrapescore.lib.config import APP_CONFIG
 from scrapescore.lib.gemini_client import GeminiClient
 from scrapescore.lib.models import (
     ATSResumeResult,
@@ -31,15 +32,19 @@ def extract_and_validate_json(response_text: str, model: Any) -> dict:
     # Pattern looks for ```json (or nothing), content, then ```
     # match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.DOTALL)
 
-    json_str = ""
-    # if match:
-    #     json_str = match.group(1)
-    # else:
-    # Fallback: try to find the first '{' and last '}'
-    start = response_text.find("{")
-    end = response_text.rfind("}")
-    if start != -1 and end != -1:
-        json_str = response_text[start : end + 1]
+    # Try object extraction: find first '{' and last '}'
+    obj_start = response_text.find("{")
+    obj_end = response_text.rfind("}")
+    json_str = response_text[obj_start : obj_end + 1] if obj_start != -1 and obj_end != -1 else ""
+
+    # Try array extraction: find first '[' and last ']'
+    arr_start = response_text.find("[")
+    arr_end = response_text.rfind("]")
+    arr_str = response_text[arr_start : arr_end + 1] if arr_start != -1 and arr_end != -1 else ""
+
+    # Prefer object; fall back to array if object is a fragment inside the array
+    if arr_str and (not json_str or (arr_start < obj_start)):
+        json_str = arr_str
 
     if not json_str:
         logger.error(
@@ -62,21 +67,7 @@ def extract_and_validate_json(response_text: str, model: Any) -> dict:
         raise e  # Re-raise the exception to be handled upstream
 
 
-def run_gemini_automation(
-    prompt_str: str, model: Any = None, headless: bool = True
-) -> dict:
-    """
-    Submit a prompt to the gemini_ai_runner Redis queue and wait for a response.
-
-    Delegates browser automation to the gemini_ai_runner service, which must be
-    running before this function is called.
-
-    Args:
-        prompt_str: The prompt string to submit to Gemini
-        model: The Pydantic model to validate the response against
-        headless: Ignored (the server controls its own browser)
-    """
-
+def _run_gemini_redis_automation(prompt_str: str, model: Any) -> dict:
     client = GeminiClient()
     timeout = 180
 
@@ -100,6 +91,87 @@ def run_gemini_automation(
         return extract_and_validate_json(raw_text, model)
 
     return {"error": "No response content from gemini_ai_runner"}
+
+
+_CANDIDATE_SPLIT_MARKER = "<!-- CANDIDATE -->"
+_USER_SPLIT_MARKER = "<!-- USER -->"
+
+
+def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> dict:
+    import openai
+
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+    base_url = llm_cfg.get("base_url")
+    llm_model = llm_cfg.get("model")
+
+    client = openai.OpenAI(api_key=api_key, base_url=base_url)
+    logger.info(f"Calling OpenAI-compatible API: {base_url} model={llm_model}")
+
+    if _CANDIDATE_SPLIT_MARKER in prompt_str and _USER_SPLIT_MARKER in prompt_str:
+        # Three-part split: instructions | candidate profile | job data
+        # system = instructions + candidate profile (stable per user → cached)
+        # user   = job-specific data (varies per call)
+        instructions, rest = prompt_str.split(_CANDIDATE_SPLIT_MARKER, 1)
+        candidate_part, user_part = rest.split(_USER_SPLIT_MARKER, 1)
+        system_content = instructions.strip() + "\n\n" + candidate_part.strip()
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_part.strip()},
+        ]
+        logger.debug("Using system(instructions+candidate)/user(job) split for prompt caching")
+    elif _USER_SPLIT_MARKER in prompt_str:
+        # Two-part split: instructions | variable data
+        system_part, user_part = prompt_str.split(_USER_SPLIT_MARKER, 1)
+        messages = [
+            {"role": "system", "content": system_part.strip()},
+            {"role": "user", "content": user_part.strip()},
+        ]
+        logger.debug("Using system/user message split for prompt caching")
+    else:
+        messages = [{"role": "user", "content": prompt_str}]
+
+    response = client.chat.completions.create(
+        model=llm_model,
+        messages=messages,
+    )
+
+    usage = response.usage
+    if usage:
+        extra = getattr(usage, "model_extra", {}) or {}
+        cache_hit = extra.get("prompt_cache_hit_tokens", 0)
+        cache_miss = extra.get("prompt_cache_miss_tokens", 0)
+        logger.info(
+            f"LLM usage — prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens}, "
+            f"cache hit: {cache_hit}, cache miss: {cache_miss}"
+        )
+
+    raw_text = response.choices[0].message.content
+    if model:
+        return extract_and_validate_json(raw_text, model)
+    return {"raw_text": raw_text}
+
+
+def run_gemini_automation(
+    prompt_str: str, model: Any = None, headless: bool = True
+) -> dict:
+    """
+    Submit a prompt to the configured LLM provider.
+
+    Routes to either the gemini_ai_runner Redis queue or an OpenAI-compatible
+    API directly, based on the `llm_provider.provider` setting in config.yaml.
+
+    Args:
+        prompt_str: The prompt string to submit
+        model: The Pydantic model to validate the response against
+        headless: Ignored (legacy parameter)
+    """
+    llm_cfg = APP_CONFIG.get("llm_provider", {})
+    provider = llm_cfg.get("provider", "gemini")
+
+    if provider == "openai":
+        return _run_openai_automation(prompt_str, model, llm_cfg)
+    else:
+        return _run_gemini_redis_automation(prompt_str, model)
 
 
 def analyze_resume_ats(resume_text: str) -> dict:
@@ -152,11 +224,13 @@ ATS Summary
 23. Top matching job titles for the resume (list of strings, no scores)
 24. Key Skills ATS recognizes in your resume (list of strings)
 
-Resume:
-{resume_text}
-
 Respond ONLY with valid JSON matching this exact schema — no markdown, no explanation:
 {json.dumps(schema, indent=2)}
+
+<!-- USER -->
+
+Resume:
+{resume_text}
 """
     return run_gemini_automation(prompt, ATSResumeResult)
 
