@@ -169,7 +169,20 @@ def run_gemini_automation(
     provider = llm_cfg.get("provider", "gemini")
 
     if provider == "openai":
-        return _run_openai_automation(prompt_str, model, llm_cfg)
+        try:
+            return _run_openai_automation(prompt_str, model, llm_cfg)
+        except Exception as e:
+            import openai as _openai
+            is_quota = isinstance(e, _openai.RateLimitError) or (
+                isinstance(e, _openai.APIStatusError) and e.status_code == 402
+            )
+            if is_quota:
+                logger.warning(
+                    f"OpenAI-compatible API quota exhausted ({type(e).__name__}: {e}), "
+                    "falling back to Redis/Gemini"
+                )
+                return _run_gemini_redis_automation(prompt_str, model)
+            raise
     else:
         return _run_gemini_redis_automation(prompt_str, model)
 
