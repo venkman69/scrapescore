@@ -67,7 +67,7 @@ def extract_and_validate_json(response_text: str, model: Any) -> dict:
         raise e  # Re-raise the exception to be handled upstream
 
 
-def _run_gemini_redis_automation(prompt_str: str, model: Any) -> dict:
+def _run_gemini_redis_automation(prompt_str: str, model: Any) -> tuple[dict, dict]:
     client = GeminiClient()
     timeout = 180
 
@@ -76,28 +76,28 @@ def _run_gemini_redis_automation(prompt_str: str, model: Any) -> dict:
 
     if response.get("status") == "error":
         logger.error(f"gemini_ai_runner returned error: {response.get('error')}")
-        return {"error": response.get("error", "Unknown error from gemini_ai_runner")}
+        return {"error": response.get("error", "Unknown error from gemini_ai_runner")}, {}
 
     if response.get("result") and isinstance(response["result"], dict):
         try:
             if model:
                 validated = model.model_validate(response["result"])
-                return validated.model_dump()
+                return validated.model_dump(), {}
         except Exception:
             logger.debug("Server-provided result failed validation, trying raw_text")
 
     raw_text = response.get("raw_text", "")
     if raw_text:
-        return extract_and_validate_json(raw_text, model)
+        return extract_and_validate_json(raw_text, model), {}
 
-    return {"error": "No response content from gemini_ai_runner"}
+    return {"error": "No response content from gemini_ai_runner"}, {}
 
 
 _CANDIDATE_SPLIT_MARKER = "<!-- CANDIDATE -->"
 _USER_SPLIT_MARKER = "<!-- USER -->"
 
 
-def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> dict:
+def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[dict, dict]:
     import openai
 
     api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -135,6 +135,7 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> dict:
         messages=messages,
     )
 
+    usage_dict = {}
     usage = response.usage
     if usage:
         extra = getattr(usage, "model_extra", {}) or {}
@@ -144,16 +145,55 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> dict:
             f"LLM usage — prompt: {usage.prompt_tokens}, completion: {usage.completion_tokens}, "
             f"cache hit: {cache_hit}, cache miss: {cache_miss}"
         )
+        usage_dict = {
+            "prompt_tokens": usage.prompt_tokens or 0,
+            "completion_tokens": usage.completion_tokens or 0,
+            "total_tokens": usage.total_tokens or 0,
+            "cache_hit_tokens": cache_hit,
+            "cache_miss_tokens": cache_miss,
+        }
 
     raw_text = response.choices[0].message.content
     if model:
-        return extract_and_validate_json(raw_text, model)
-    return {"raw_text": raw_text}
+        return extract_and_validate_json(raw_text, model), usage_dict
+    return {"raw_text": raw_text}, usage_dict
+
+
+def _log_usage(usage: dict, provider: str, model: str, call_type: str, duration_ms: int = 0):
+    """Insert a row into llm_usage_log for the given usage dict."""
+    if not usage:
+        return
+    try:
+        from scrapescore.db_setup import get_db_connection
+        conn = get_db_connection()
+        conn.execute(
+            """
+            INSERT INTO llm_usage_log
+                (provider, model, call_type, prompt_tokens, completion_tokens,
+                 total_tokens, cache_hit_tokens, cache_miss_tokens, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                provider,
+                model,
+                call_type,
+                usage.get("prompt_tokens", 0),
+                usage.get("completion_tokens", 0),
+                usage.get("total_tokens", 0),
+                usage.get("cache_hit_tokens", 0),
+                usage.get("cache_miss_tokens", 0),
+                duration_ms,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to log LLM usage to DB: {e}")
 
 
 def run_gemini_automation(
-    prompt_str: str, model: Any = None, headless: bool = True
-) -> dict:
+    prompt_str: str, model: Any = None, headless: bool = True, call_type: str = ""
+) -> tuple[dict, dict]:
     """
     Submit a prompt to the configured LLM provider.
 
@@ -164,14 +204,21 @@ def run_gemini_automation(
         prompt_str: The prompt string to submit
         model: The Pydantic model to validate the response against
         headless: Ignored (legacy parameter)
+        call_type: Label for the type of call (logged to llm_usage_log)
+
+    Returns:
+        tuple[dict, dict]: (result, usage_dict)
     """
     llm_cfg = APP_CONFIG.get("llm_provider", {})
     provider = llm_cfg.get("provider", "gemini")
+    llm_model = llm_cfg.get("model", "")
 
     if provider == "openai":
-        logger.info(f"LLM provider: openai ({llm_cfg.get('base_url')} / {llm_cfg.get('model')})")
+        logger.info(f"LLM provider: openai ({llm_cfg.get('base_url')} / {llm_model})")
         try:
-            return _run_openai_automation(prompt_str, model, llm_cfg)
+            result, usage = _run_openai_automation(prompt_str, model, llm_cfg)
+            _log_usage(usage, provider, llm_model, call_type)
+            return result, usage
         except Exception as e:
             import openai as _openai
             is_quota = isinstance(e, _openai.RateLimitError) or (
@@ -182,11 +229,13 @@ def run_gemini_automation(
                     f"OpenAI-compatible API quota exhausted ({type(e).__name__}: {e}), "
                     "falling back to Redis/Gemini"
                 )
-                return _run_gemini_redis_automation(prompt_str, model)
+                result, usage = _run_gemini_redis_automation(prompt_str, model)
+                return result, usage
             raise
     else:
         logger.info("LLM provider: gemini (Redis queue)")
-        return _run_gemini_redis_automation(prompt_str, model)
+        result, usage = _run_gemini_redis_automation(prompt_str, model)
+        return result, usage
 
 
 def analyze_resume_ats(resume_text: str) -> dict:
@@ -247,7 +296,8 @@ Respond ONLY with valid JSON matching this exact schema — no markdown, no expl
 Resume:
 {resume_text}
 """
-    return run_gemini_automation(prompt, ATSResumeResult)
+    result, _ = run_gemini_automation(prompt, ATSResumeResult, call_type="resume_ats")
+    return result
 
 
 def redact_resume_or_jd(md_text: str) -> str:
@@ -309,7 +359,7 @@ def job_description_to_details_extractor_gemini(
         gemini_prompt_str = f.read()
     prompt_str = gemini_prompt_str.format(job_description=job_description)
     start_time = utils.current_time_millis()
-    result = run_gemini_automation(
+    result, _ = run_gemini_automation(
         prompt_str, model=JobDescriptionToDetails, headless=headless
     )
     end_time = utils.current_time_millis()
@@ -341,7 +391,7 @@ def hr_title_analyzer_gemini(
         desired_role_description=desired_role_description,
     )
     start_time = utils.current_time_millis()
-    result = run_gemini_automation(prompt_str, model=JobTitleScores)
+    result, _ = run_gemini_automation(prompt_str, model=JobTitleScores, call_type="title_scoring")
     end_time = utils.current_time_millis()
     logger.info(f"Gemini AI analysis took {end_time - start_time} ms")
     # Extract scores from the result dict to match the function's return type
@@ -352,7 +402,7 @@ def hr_title_analyzer_gemini(
             f"Error in Gemini analysis, retrying 1 more time: {result['error']}"
         )
         # retry one more time:
-        result = run_gemini_automation(prompt_str, model=JobTitleScores)
+        result, _ = run_gemini_automation(prompt_str, model=JobTitleScores, call_type="title_scoring")
         if isinstance(result, dict) and "scores" in result:
             return result["scores"]
         elif isinstance(result, list):
@@ -530,7 +580,9 @@ def ats_score_analyzer_gemini(
 
     # Run Gemini analysis
     start_time = utils.current_time_millis()
-    result = run_gemini_automation(prompt_str, model=ATSScoreResult, headless=headless)
+    result, usage = run_gemini_automation(
+        prompt_str, model=ATSScoreResult, headless=headless, call_type="ats_scoring"
+    )
     end_time = utils.current_time_millis()
     logger.info(f"Gemini AI ATS analysis took {end_time - start_time} ms")
 
@@ -549,10 +601,10 @@ def ats_score_analyzer_gemini(
         # Save the result
         # save_path = save_gemini_analysis(prompt_str, job_details, "ats_analysis", result)
 
-        return result, "", {}
+        return result, "", usage
     else:
         logger.error(f"ATS analysis failed or returned error: {result}")
-        return result, "", {}
+        return result, "", usage
 
 
 # ============================================================================

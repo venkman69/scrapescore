@@ -220,6 +220,32 @@ def create_scraper_configs_table(cursor):
     logger.info("scraper_configs table created/verified")
 
 
+def create_llm_usage_log_table(cursor):
+    """Create the llm_usage_log table for tracking LLM API token usage."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS llm_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            call_type TEXT DEFAULT '',
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            cache_hit_tokens INTEGER DEFAULT 0,
+            cache_miss_tokens INTEGER DEFAULT 0,
+            duration_ms INTEGER DEFAULT 0
+        )
+    """)
+    logger.info("llm_usage_log table created/verified")
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_llm_usage_log_timestamp
+        ON llm_usage_log(timestamp DESC)
+    """)
+    logger.info("idx_llm_usage_log_timestamp index created/verified")
+
+
 def setup_database(db_path: Path = None) -> sqlite3.Connection:
     """
     Setup and initialize the database with all tables.
@@ -253,6 +279,7 @@ def setup_database(db_path: Path = None) -> sqlite3.Connection:
     create_applied_job_status_history_table(cursor)
     create_scraping_logs_table(cursor)
     create_scraper_configs_table(cursor)
+    create_llm_usage_log_table(cursor)
 
     conn.commit()
 
@@ -292,6 +319,7 @@ def verify_database(db_path: Path = None) -> bool:
             "applied_job_status_history",
             "scraping_logs",
             "scraper_configs",
+            "llm_usage_log",
         ]
         for table in tables_to_check:
             cursor.execute(
@@ -350,6 +378,7 @@ def main(
             "applied_job_status_history",
             "scraping_logs",
             "scraper_configs",
+            "llm_usage_log",
         ]:
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
             count = cursor.fetchone()[0]
