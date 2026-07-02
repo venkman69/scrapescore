@@ -7,6 +7,9 @@ server:
   port: 8507
   base_url_prefix: "/scrapescore"   # e.g. "/scrapescore" for reverse-proxy deployments
 
+browser:
+  headless: true   # set to false to show the browser window (useful for debugging)
+
 
 hours_old: 168 # 1 week
 

@@ -905,7 +905,6 @@ def post_score(job_id: int, profile_name: str = "", description: str = "", auth=
             job_details=job_details_meta,
             us_citizen=profile["us_citizen"],
             security_clearance=profile["security_clearance"],
-            headless=True,
         )
         if "error" in result:
             return Alert(f"Scoring error: {result['error']}", cls=AlertT.error)

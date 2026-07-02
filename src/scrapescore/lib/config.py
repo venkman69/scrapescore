@@ -24,6 +24,7 @@ def _load_resource_config() -> dict:
 
 APP_CONFIG: dict = _load_app_config()
 RESOURCE_CONFIG: dict = _load_resource_config()
+BROWSER_HEADLESS: bool = bool(APP_CONFIG.get("browser", {}).get("headless", True))
 
 
 def _derive_prefix(cfg: dict) -> str:

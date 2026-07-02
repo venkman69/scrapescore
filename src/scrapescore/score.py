@@ -501,7 +501,6 @@ def post_calculate(profile_name: str, job_text: str, job_url: str = "", auth=Non
             job_details=job_details,
             us_citizen=profile["us_citizen"],
             security_clearance=profile["security_clearance"],
-            headless=True,
         )
 
         if "error" in result:

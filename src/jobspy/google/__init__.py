@@ -10,6 +10,7 @@ from typing import Optional
 import html_to_markdown
 from playwright.sync_api import sync_playwright
 import logging
+from scrapescore.lib.config import BROWSER_HEADLESS
 from jobspy.model import (
     Scraper,
     ScraperInput,
@@ -66,7 +67,7 @@ class Google(Scraper):
         with sync_playwright() as p:
             # Launch browser
             browser = p.chromium.launch(
-                headless=True,
+                headless=BROWSER_HEADLESS,
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",

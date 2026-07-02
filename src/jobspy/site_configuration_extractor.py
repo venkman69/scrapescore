@@ -5,6 +5,7 @@ import re
 from urllib.parse import urlparse, parse_qs, unquote, urlencode
 
 from playwright.sync_api import sync_playwright
+from scrapescore.lib.config import BROWSER_HEADLESS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -227,7 +228,7 @@ def _discover_oracle_finder(url: str) -> dict:
     logger.info("Discovering OracleCloud API params for %s", url)
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=True)
+        browser = pw.chromium.launch(headless=BROWSER_HEADLESS)
         page = browser.new_page()
 
         with page.expect_request(
@@ -395,7 +396,7 @@ def _discover_tenant_site(url: str) -> str:
     logger.info("Discovering tenant_site for %s", url)
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=True)
+        browser = pw.chromium.launch(headless=BROWSER_HEADLESS)
         page = browser.new_page()
 
         with page.expect_request(

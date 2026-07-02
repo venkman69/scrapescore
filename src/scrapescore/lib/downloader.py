@@ -17,7 +17,7 @@ from html_to_markdown import convert_to_markdown
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
-from scrapescore.lib.config import get_storage_dir_config
+from scrapescore.lib.config import get_storage_dir_config, BROWSER_HEADLESS
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def _cleanup_chrome_locks():
         pass
 
 
-def _get_or_create_browser(headless: bool = True):
+def _get_or_create_browser(headless: bool = BROWSER_HEADLESS):
     """Get or create the singleton browser instance."""
     global _browser_instance, _playwright_instance, _browser_ref_count
 
@@ -235,7 +235,7 @@ def get_playwright_stealth_browser(headless: bool = True) -> Generator:
         Browser context object that can be used to create pages
 
     Example:
-        with get_playwright_stealth_browser(headless=True) as browser:
+        with get_playwright_stealth_browser() as browser:
             page = browser.new_page()
             page.goto("https://example.com")
             # ... use the page

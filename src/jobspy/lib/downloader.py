@@ -15,6 +15,7 @@ from typing import Generator
 import contextlib
 import requests
 import logging
+from scrapescore.lib.config import BROWSER_HEADLESS
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def _cleanup_chrome_locks(chrome_user_data_dir: str | None = None):
         pass
 
 
-def _get_or_create_browser(headless: bool = True, chrome_user_data_dir: str | None = None):
+def _get_or_create_browser(headless: bool = BROWSER_HEADLESS, chrome_user_data_dir: str | None = None):
     global _browser_instance, _playwright_instance, _browser_ref_count
 
     with _browser_lock:

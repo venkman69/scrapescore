@@ -7,6 +7,7 @@ import asyncio
 from playwright.sync_api import sync_playwright, Page, Response, Locator
 from playwright_stealth import Stealth
 import logging
+from scrapescore.lib.config import BROWSER_HEADLESS
 from jobspy.model import CompensationInterval, Scraper, ScraperInput, Site, JobPost, JobResponse, Location, Compensation, Country, JobType
 from html_to_markdown import convert_to_markdown
 
@@ -111,7 +112,7 @@ class ZipRecruiter(Scraper):
     def _create_browser_session(self):
         """Create a new Playwright browser session with stealth."""
         browser = self._playwright.chromium.launch(
-            headless=True,
+            headless=BROWSER_HEADLESS,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-dev-shm-usage",
