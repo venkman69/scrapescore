@@ -160,6 +160,10 @@ class ATSScoreResult(BaseModel):
 
 ## Job Input
 
+--- JOB DESCRIPTION BEGIN ---
+{job_description}
+--- JOB DESCRIPTION END ---
+
 --- JOB URL BEGIN ---
 {job_url}
 --- JOB URL END ---
@@ -171,9 +175,5 @@ class ATSScoreResult(BaseModel):
 --- JOB SOURCE BEGIN ---
 {job_source}
 --- JOB SOURCE END ---
-
---- JOB DESCRIPTION BEGIN ---
-{job_description}
---- JOB DESCRIPTION END ---
 
 OUTPUT THE JSON NOW:

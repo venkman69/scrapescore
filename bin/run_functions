@@ -1,11 +1,21 @@
 #!/bin/bash
 # add path to uv
 export PATH=$PATH:~/.local/bin
+install_mise() {
+    if ! command -v mise &> /dev/null
+    then
+        >&2 echo "Installing mise.."
+        curl https://mise.run | sh
+    else
+        >&2 echo "mise is available $(command -v mise)"
+    fi
+}
 install_uv () {
     if ! command -v uv &> /dev/null
     then
         >&2 echo "Installing uv.."
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+        install_mise
+        mise use -g uv@latest
     else
         >&2 echo "uv is available $(command -v uv)"
     fi
@@ -56,9 +66,7 @@ status() {
     fi
 }
 makevenv() {
-    install_uv
-    >&2 echo "Installing dependencies with uv sync"
-    uv sync
+    :
 }
 rebuild() {
     #set a lock file to prevent multiple rebuilds
@@ -96,8 +104,10 @@ start() {
     git_check
     if [ $? -eq 1 ]; then
         >&2 echo "Git was modified, rebuilding"
+        install_mise
         rebuild
     else
+        install_mise
         makevenv
     fi
     status
