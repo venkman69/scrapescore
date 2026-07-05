@@ -6,6 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from scrapescore.lib import utils
 from scrapescore.lib.config import APP_CONFIG
 from scrapescore.lib.gemini_client import GeminiClient
 from scrapescore.lib.models import (
@@ -16,7 +17,6 @@ from scrapescore.lib.models import (
     JobDescriptionToDetails,
     JobTitleScores,
 )
-from scrapescore.lib import utils
 
 logger = logging.getLogger(__name__)
 def extract_and_validate_json(response_text: str, model: Any) -> dict:
@@ -104,6 +104,7 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
     base_url = llm_cfg.get("base_url")
     llm_model = llm_cfg.get("model")
 
+    max_tokens = llm_cfg.get("max_tokens")
     client = openai.OpenAI(api_key=api_key, base_url=base_url)
     logger.info(f"Calling OpenAI-compatible API: {base_url} model={llm_model}")
 
@@ -130,10 +131,10 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
     else:
         messages = [{"role": "user", "content": prompt_str}]
 
-    response = client.chat.completions.create(
-        model=llm_model,
-        messages=messages,
-    )
+    create_kwargs = {"model": llm_model, "messages": messages}
+    if max_tokens is not None:
+        create_kwargs["max_tokens"] = int(max_tokens)
+    response = client.chat.completions.create(**create_kwargs)
 
     usage_dict = {}
     usage = response.usage
@@ -560,13 +561,13 @@ def ats_score_analyzer_gemini(
         gemini_prompt_str = f.read()
 
     prompt_str = gemini_prompt_str.format(
+        resume=resume,
+        us_citizen="Yes" if us_citizen else "No",
+        security_clearance=security_clearance,
         job_url=job_details.get("job_url", "none"),
         job_id=job_details.get("job_id", "none"),
         job_source=job_details.get("job_source", "none"),
-        resume=resume,
         job_description=job_description,
-        us_citizen="Yes" if us_citizen else "No",
-        security_clearance=security_clearance,
     )
 
     logger.debug(f"Prompt str length: {len(prompt_str)}")
