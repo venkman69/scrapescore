@@ -357,6 +357,7 @@ if auth_provider == "local":
                     Button(
                         _user_avatar_el(u),
                         P(u["display_name"], cls="text-sm font-medium text-center"),
+                        P(f"@{u['handle']}", cls="text-xs text-muted-foreground text-center") if u.get("handle") else None,
                         cls="w-full p-4 hover:bg-accent rounded-lg border border-border cursor-pointer transition-colors",
                         type="submit",
                     ),
@@ -510,6 +511,21 @@ def get(auth, sess, saved: str = ""):
                             cls="mb-4",
                         ),
                         Div(
+                            Label("Handle", For="handle", cls="text-sm font-medium"),
+                            Input(
+                                id="handle",
+                                name="handle",
+                                value=user.get("handle") or "",
+                                placeholder="short name, e.g. narayan (optional)",
+                                cls="mt-1",
+                            ),
+                            P(
+                                "Handle is already taken by another user.",
+                                cls="text-destructive text-sm mt-1",
+                            ) if saved == "handle_taken" else None,
+                            cls="mb-4",
+                        ),
+                        Div(
                             Label("Notification Email", For="email", cls="text-sm font-medium"),
                             Input(
                                 id="email",
@@ -550,15 +566,18 @@ def get(auth, sess, saved: str = ""):
 
 
 @rt("/account/")
-def post(auth, sess, display_name: str = "", email: str = "", notes: str = ""):
+def post(auth, sess, display_name: str = "", email: str = "", notes: str = "", handle: str = ""):
     display_name = display_name.strip()
-    update_user_profile(auth, display_name=display_name, email=email.strip(), notes=notes.strip())
+    try:
+        update_user_profile(auth, display_name=display_name, email=email.strip(), notes=notes.strip(), handle=handle)
+    except ValueError:
+        return RedirectResponse(f"{BASE_PREFIX}/account/?saved=handle_taken", status_code=303)
     user_info = sess.get("user_info", {})
     if display_name:
         user_info["name"] = display_name
     user_info["email"] = email.strip()
     sess["user_info"] = user_info
-    logger.info("Account updated for %r: display_name=%r", auth, display_name)
+    logger.info("Account updated for %r: display_name=%r handle=%r", auth, display_name, handle.strip() or None)
     return RedirectResponse(f"{BASE_PREFIX}/account/?saved=1", status_code=303)
 
 

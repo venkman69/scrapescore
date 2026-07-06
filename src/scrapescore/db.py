@@ -39,7 +39,7 @@ def upsert_user(username: str, display_name: str, picture_url: str, email: str, 
     conn.close()
 
 
-_USER_COLS = "username, display_name, picture_url, email, notes, theme, auth_provider, date_created"
+_USER_COLS = "username, display_name, handle, picture_url, email, notes, theme, auth_provider, date_created"
 
 
 def get_all_users() -> list[dict]:
@@ -112,13 +112,22 @@ def local_user_exists(username: str) -> bool:
     return exists
 
 
-def update_user_profile(username: str, display_name: str, email: str, notes: str) -> None:
-    """Update user-editable profile fields."""
+def update_user_profile(username: str, display_name: str, email: str, notes: str, handle: str = "") -> None:
+    """Update user-editable profile fields. Raises ValueError if handle is taken."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    handle_val = handle.strip() or None
+    if handle_val:
+        cursor.execute(
+            "SELECT username FROM users WHERE handle = ? AND username != ?",
+            (handle_val, username),
+        )
+        if cursor.fetchone():
+            conn.close()
+            raise ValueError(f"Handle '{handle_val}' is already taken")
     cursor.execute(
-        "UPDATE users SET display_name=?, email=?, notes=? WHERE username=?",
-        (display_name, email, notes, username),
+        "UPDATE users SET display_name=?, email=?, notes=?, handle=? WHERE username=?",
+        (display_name, email, notes, handle_val, username),
     )
     conn.commit()
     conn.close()
