@@ -17,8 +17,8 @@ The system is setup on a linux server with xvfb, fluxbox and x11vnc so that I ca
 ## Prerequisites
 
 - Python 3.12+ with [uv](https://docs.astral.sh/uv/)
-- Google Cloud project with OAuth 2.0 credentials (for sign-in)
 - A Gemini API key (for AI title compatibility scoring)
+- Google Cloud project with OAuth 2.0 credentials (optional — only needed if using `auth.provider: "google-oauth"`)
 
 ---
 
@@ -28,7 +28,25 @@ The system is setup on a linux server with xvfb, fluxbox and x11vnc so that I ca
 This project is paired with `gemini_ai_runner` project which brokers the AI using Gemini Web (poor man's llm compromise).
 Project is here [https://github.com/venkman69/gemini\_ai\_runner](https://github.com/venkman69/gemini_ai_runner)
 
-### 1. Configure environment
+### 1. Choose an auth mode
+
+Set `auth.provider` in `config.yaml`:
+
+```yaml
+auth:
+  provider: "local"        # no-password user picker (recommended for personal use)
+  # provider: "google-oauth"   # Google OAuth 2.0 sign-in
+```
+
+**`local` mode** — a simple user picker is shown at login. The first time there are no users you are prompted to create one (just type a username). Subsequent visits show a grid of user cards; click yours to enter. No passwords, no OAuth setup required.
+
+**`google-oauth` mode** — signs in via Google. Requires OAuth 2.0 credentials (see step 2 below).
+
+> **Migrating from Google OAuth to local**: Log in once under `google-oauth` so your real name and photo are captured in the `users` table, then switch to `local` and restart. The picker will show your Google name and photo automatically.
+
+---
+
+### 2. Configure environment
 
 Create a `.env` file in the project root:
 
@@ -46,7 +64,7 @@ Modify `config.yaml` to your spec. Key items:
     * **NOTE**: This must match google OAuth setup.
 * `site_names`: are the sites that the `job_finder.py` will scrape in each run.
 
-### 2. Google OAuth credentials
+### 3. Google OAuth credentials (only for `google-oauth` mode)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → Credentials → Create OAuth 2.0 Client ID
 2. Application type: **Web application**
@@ -54,10 +72,10 @@ Modify `config.yaml` to your spec. Key items:
 4. Download the JSON file and save it to the default location: `./work/job_finder/client_secrets.json`
 5. If you chose a different location then set the path in `config.yaml`:
    ```yaml
-   google_oauth_secrets_path: ./work/job_finder/client_secret.json
+   google_oauth_secrets_path: ./work/job_finder/client_secrets.json
    ```
 
-### 3. Chrome profile for Playwright scraping (optional)
+### 4. Chrome profile for Playwright scraping (optional)
 
 A chrome browser data directory where you have authenticated to google and other job sites is recommended for better chance of not getting blocked.
 
@@ -83,7 +101,10 @@ You can also sign in to linkedin, indeed and any other sites that you may want t
 ./bin/run_job_score.sh
 ```
 
-Then open [http://localhost:8507](http://localhost:8507) (or port per config.yaml) and sign in with Google.
+Then open [http://localhost:8507](http://localhost:8507) (or port per config.yaml).
+
+- **Local mode**: a user picker appears. Click your card or create a new user.
+- **Google OAuth mode**: click "Sign in with Google".
 
 ---
 
@@ -101,6 +122,20 @@ Each run:
 - Scores job titles against your role preferences (high / medium / low compatibility)
 - Stores new jobs in `job_details` with the `search_term` that found them
 - Logs scraping activity to `scraping_logs`
+
+---
+
+## Account editor
+
+Click the avatar in the top-right navigation bar and choose **Account** to edit your profile:
+
+| Field | Notes |
+|-------|-------|
+| Display Name | Shown in the picker and the welcome page. Pre-filled from Google name on OAuth login. |
+| Notification Email | Separate from your Google address — set this for future notification features. Preserved across OAuth re-logins. |
+| Notes | Free-form personal notes, bio, etc. |
+
+Changes take effect immediately. The session is updated so the nav bar reflects the new display name without a full logout/login.
 
 ---
 
