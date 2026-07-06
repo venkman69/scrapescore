@@ -499,7 +499,12 @@ def get(auth, sess, saved: str = ""):
                             f"Member since {user.get('date_created', '')[:10]}",
                             cls="text-xs text-muted-foreground text-center mb-6",
                         ) if user.get("date_created") else None,
-                        P("Saved successfully.", cls="text-success text-sm mb-4 text-center") if saved else None,
+                        P("Saved successfully.", cls="text-success text-sm mb-4 text-center") if saved == "1" else None,
+                        Div(
+                            Label("User ID", cls="text-sm font-medium"),
+                            Input(value=auth, readonly=True, cls="mt-1 text-muted-foreground bg-muted cursor-default"),
+                            cls="mb-4",
+                        ),
                         Div(
                             Label("Display Name", For="display_name", cls="text-sm font-medium"),
                             Input(
