@@ -852,7 +852,7 @@ def create_applied_job(job_data: dict, owning_user: str) -> int:
     except Exception as e:
         _logger.error(f"create_applied_job error: {e}")
         conn.rollback()
-        return 0
+        raise
     finally:
         conn.close()
 

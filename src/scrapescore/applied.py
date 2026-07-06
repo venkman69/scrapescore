@@ -1006,6 +1006,8 @@ def post_create(auth,
                 description: str = ""):
     if not title.strip() or not company.strip():
         return P("Title and Company are required.", cls="text-destructive text-sm p-2")
+    if not job_url.strip():
+        return P("A unique URL is required — use the job posting URL, or any unique string like 'acme-swe-2026'.", cls="text-destructive text-sm p-2")
     user = get_auth_user(auth)
     job_data = dict(
         title=title.strip(), company=company.strip(),
@@ -1016,9 +1018,11 @@ def post_create(auth,
         is_remote="true" if is_remote else "false",
         security_clearance_required=bool(security_clearance_required),
     )
-    new_id = create_applied_job(job_data, user)
-    if not new_id:
-        return P("Failed to create job. Please try again.", cls="text-destructive text-sm p-2")
+    try:
+        new_id = create_applied_job(job_data, user)
+    except Exception as e:
+        logger.exception("create_applied_job failed")
+        return P(f"Failed to create job: {e}", cls="text-destructive text-sm p-2")
     job = get_applied_job_by_id(new_id, user)
     return (
         get_job_detail(new_id, auth),
