@@ -39,12 +39,15 @@ def upsert_user(username: str, display_name: str, picture_url: str, email: str, 
     conn.close()
 
 
+_USER_COLS = "username, display_name, picture_url, email, notes, theme, auth_provider, date_created"
+
+
 def get_all_users() -> list[dict]:
-    """Return all users ordered by display_name (used by the local-mode picker)."""
+    """Return all users ordered by display_name (blob excluded for efficiency)."""
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users ORDER BY display_name")
+    cursor.execute(f"SELECT {_USER_COLS} FROM users ORDER BY display_name")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -64,14 +67,36 @@ def get_local_users() -> list[dict]:
 
 
 def get_user(username: str) -> dict | None:
-    """Return a single user record by username."""
+    """Return a single user record by username (blob excluded)."""
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    cursor.execute(f"SELECT {_USER_COLS} FROM users WHERE username = ?", (username,))
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_user_avatar(username: str) -> bytes | None:
+    """Return the raw picture_blob bytes for a user, or None if not set."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT picture_blob FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row[0] is None:
+        return None
+    raw = row[0]
+    return bytes(raw) if isinstance(raw, memoryview) else raw
+
+
+def save_user_avatar(username: str, blob_bytes: bytes) -> None:
+    """Persist an uploaded avatar image BLOB for a user."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET picture_blob = ? WHERE username = ?", (blob_bytes, username))
+    conn.commit()
+    conn.close()
 
 
 def local_user_exists(username: str) -> bool:

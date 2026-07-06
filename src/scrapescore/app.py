@@ -22,6 +22,7 @@ Google OAuth setup:
 import asyncio
 import logging
 import sys
+import time
 from pathlib import Path
 
 from fasthtml.common import *
@@ -45,7 +46,8 @@ from scrapescore.applied import applied_rt
 from scrapescore.common import NavigationLayout
 from scrapescore.configs import ar as configs_router
 from scrapescore.db import (
-    get_all_users, get_user, local_user_exists, update_user_profile, upsert_user,
+    get_all_users, get_user, get_user_avatar, local_user_exists,
+    save_user_avatar, update_user_profile, upsert_user,
 )
 from scrapescore.db_setup import ensure_users_table
 from scrapescore.profiles import ar as profiles_router
@@ -121,12 +123,17 @@ app.router.redirect_slashes = False
 if auth_provider == "local":
     def _local_auth_before(req, sess):
         if sess.get("auth"):
+            req.scope["auth"] = sess["auth"]
             return
         return RedirectResponse(f"{BASE_PREFIX}/local-login", status_code=303)
 
     app.before.append(Beforeware(
         _local_auth_before,
-        skip=[f"{BASE_PREFIX}/local-login.*", f"{BASE_PREFIX}/api/.*"],
+        skip=[
+            f"{BASE_PREFIX}/local-login.*",
+            f"{BASE_PREFIX}/api/.*",
+            f"{BASE_PREFIX}/avatar/.*",
+        ],
     ))
 
 
@@ -276,19 +283,43 @@ analytics_rt.to_app(app)
 configs_router.to_app(app)
 
 
+# --- Avatar serving (both auth modes) ---
+
+@rt("/avatar/{username}")
+def get(username: str):
+    from starlette.responses import Response as SR, RedirectResponse as RR
+    blob = get_user_avatar(username)
+    if blob:
+        if blob[:8] == b'\x89PNG\r\n\x1a\n':
+            ct = "image/png"
+        elif blob[:6] in (b'GIF87a', b'GIF89a'):
+            ct = "image/gif"
+        elif len(blob) > 12 and blob[8:12] == b'WEBP':
+            ct = "image/webp"
+        else:
+            ct = "image/jpeg"
+        return SR(content=blob, media_type=ct)
+    user = get_user(username)
+    if user and user.get("picture_url"):
+        return RR(user["picture_url"], status_code=302)
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">'
+           b'<circle cx="20" cy="20" r="20" fill="#d1d5db"/>'
+           b'<text x="20" y="26" text-anchor="middle" font-size="18" fill="#6b7280">?</text>'
+           b'</svg>')
+    return SR(content=svg, media_type="image/svg+xml")
+
+
 # --- Auth-mode-specific routes ---
 
 if auth_provider == "local":
 
     def _user_avatar_el(user: dict):
-        if user.get("picture_url"):
-            return Img(
-                src=user["picture_url"],
-                alt=user["display_name"],
-                cls="w-16 h-16 rounded-full object-cover mx-auto mb-2",
-                referrerpolicy="no-referrer",
-            )
-        return Div(UkIcon("user", ratio=2.5), cls="flex justify-center mb-2 text-muted-foreground")
+        return Img(
+            src=f"{BASE_PREFIX}/avatar/{user['username']}",
+            alt=user["display_name"],
+            cls="w-16 h-16 rounded-full object-cover mx-auto mb-2",
+            referrerpolicy="no-referrer",
+        )
 
     def _create_user_form(error: str = ""):
         return Form(
@@ -354,7 +385,7 @@ if auth_provider == "local":
             return RedirectResponse(f"{BASE_PREFIX}/local-login?error=Username+cannot+be+empty", status_code=303)
         upsert_user(username, display_name=username, picture_url="", email="", auth_provider="local")
         sess["auth"] = username
-        sess["user_info"] = {"email": username, "name": username, "picture": ""}
+        sess["user_info"] = {"email": username, "name": username, "picture": f"{BASE_PREFIX}/avatar/{username}"}
         logger.info("Local login: created/selected user %r", username)
         return RedirectResponse(f"{BASE_PREFIX}/", status_code=303)
 
@@ -367,7 +398,7 @@ if auth_provider == "local":
         sess["user_info"] = {
             "email": user.get("email") or username,
             "name": user.get("display_name") or username,
-            "picture": user.get("picture_url", ""),
+            "picture": f"{BASE_PREFIX}/avatar/{username}",
         }
         logger.info("Local login: selected user %r", username)
         return RedirectResponse(f"{BASE_PREFIX}/", status_code=303)
@@ -402,21 +433,55 @@ elif auth_provider == "google-oauth":
 
 # --- Account editor (available in both auth modes) ---
 
+@rt("/account/avatar")
+def post(auth, sess, file: UploadFile):
+    content = file.file.read()
+    if not content:
+        return P("No file received.", cls="text-destructive text-sm")
+    save_user_avatar(auth, content)
+    avatar_url = f"{BASE_PREFIX}/avatar/{auth}"
+    user_info = sess.get("user_info", {})
+    user_info["picture"] = avatar_url
+    sess["user_info"] = user_info
+    return Img(
+        src=f"{avatar_url}?t={int(time.time())}",
+        alt="Profile photo",
+        cls="w-20 h-20 rounded-full object-cover",
+        id="avatar-preview",
+    )
+
+
 @rt("/account/")
 def get(auth, sess, saved: str = ""):
     user = get_user(auth) or {}
     user_info = sess.get("user_info", {})
-    picture = user.get("picture_url") or user_info.get("picture", "")
 
-    picture_el = (
+    avatar_section = Div(
         Img(
-            src=picture,
+            src=f"{BASE_PREFIX}/avatar/{auth}?t={int(time.time())}",
             alt="Profile photo",
             cls="w-20 h-20 rounded-full object-cover",
-            referrerpolicy="no-referrer",
-        )
-        if picture
-        else Div(UkIcon("user", ratio=3), cls="w-20 h-20 flex items-center justify-center rounded-full bg-muted text-muted-foreground")
+            id="avatar-preview",
+        ),
+        Input(
+            type="file",
+            name="file",
+            accept="image/*",
+            id="avatar-file-input",
+            style="display:none",
+            hx_post=f"{BASE_PREFIX}/account/avatar",
+            hx_target="#avatar-preview",
+            hx_swap="outerHTML",
+            hx_encoding="multipart/form-data",
+            hx_trigger="change",
+        ),
+        Button(
+            "Change avatar",
+            type="button",
+            cls="text-xs text-muted-foreground hover:text-foreground mt-2 underline cursor-pointer",
+            onclick="document.getElementById('avatar-file-input').click()",
+        ),
+        cls="flex flex-col items-center mb-6",
     )
 
     return NavigationLayout(
@@ -424,7 +489,7 @@ def get(auth, sess, saved: str = ""):
             DivCentered(
                 Card(
                     Form(
-                        DivCentered(picture_el, cls="mb-6"),
+                        avatar_section,
                         P(
                             f"Signed in via {user.get('auth_provider', 'local')}",
                             cls="text-xs text-muted-foreground text-center mb-1",
