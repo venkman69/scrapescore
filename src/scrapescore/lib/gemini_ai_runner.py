@@ -104,7 +104,6 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
     base_url = llm_cfg.get("base_url")
     llm_model = llm_cfg.get("model")
 
-    max_tokens = llm_cfg.get("max_tokens")
     client = openai.OpenAI(api_key=api_key, base_url=base_url)
     logger.info(f"Calling OpenAI-compatible API: {base_url} model={llm_model}")
 
@@ -131,10 +130,11 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
     else:
         messages = [{"role": "user", "content": prompt_str}]
 
-    create_kwargs = {"model": llm_model, "messages": messages}
-    if max_tokens is not None:
-        create_kwargs["max_tokens"] = int(max_tokens)
-    response = client.chat.completions.create(**create_kwargs)
+    response = client.chat.completions.create(
+        model=llm_model,
+        messages=messages,
+        max_tokens=llm_cfg.get("max_tokens", 1024)
+    )
 
     usage_dict = {}
     usage = response.usage

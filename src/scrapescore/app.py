@@ -1,8 +1,12 @@
 """
-FastHTML application for job_score with Google OAuth.
+FastHTML application for job_score.
 
 Launch:
     PYTHONPATH="./src" uv run python -m scrapescore.app
+
+Auth modes (configured via config.yaml under auth.provider):
+  "local"        — no-password user picker/creator built into the WebUI
+  "google-oauth" — Google OAuth 2.0 (requires client_secrets.json)
 
 Google OAuth setup:
     1. Go to https://console.cloud.google.com/
@@ -32,26 +36,34 @@ from scrapescore.lib.utils import BASE_PREFIX
 # module log calls are captured from the start.
 _log_utils.config_logger("scrapescore.log", Path(get_storage_dir_config("logs_dir")))
 logger = logging.getLogger(__name__)
-logger.info("job_score app initializing (BASE_PREFIX=%r)", BASE_PREFIX)
+
+auth_provider = APP_CONFIG.get("auth", {}).get("provider", "google-oauth")
+logger.info("job_score app initializing (BASE_PREFIX=%r, auth=%s)", BASE_PREFIX, auth_provider)
 
 from scrapescore.analytics import analytics_rt
 from scrapescore.applied import applied_rt
 from scrapescore.common import NavigationLayout
 from scrapescore.configs import ar as configs_router
+from scrapescore.db import (
+    get_all_users, get_user, local_user_exists, update_user_profile, upsert_user,
+)
+from scrapescore.db_setup import ensure_users_table
 from scrapescore.profiles import ar as profiles_router
 from scrapescore.saved import saved_rt
 from scrapescore.score import score_rt
 from scrapescore.search import search_rt
 
-# Load Google OAuth client from secrets file
-secrets_path = get_storage_dir_config("google_oauth_secrets_path")
-if not secrets_path or not Path(secrets_path).exists():
-    print(f"ERROR: Google OAuth secrets file not found: {secrets_path}")
-    print("Configure 'storage_dirs.google_oauth_secrets_path' in config.yaml")
-    print("See app.py docstring for setup instructions.")
-    sys.exit(1)
+# Ensure the users table exists; backfill local users from existing owning_user data.
+ensure_users_table(auth_provider=auth_provider)
 
-google_client = GoogleAppClient.from_file(secrets_path)
+if auth_provider == "google-oauth":
+    secrets_path = get_storage_dir_config("google_oauth_secrets_path")
+    if not secrets_path or not Path(secrets_path).exists():
+        print(f"ERROR: Google OAuth secrets file not found: {secrets_path}")
+        print("Configure 'storage_dirs.google_oauth_secrets_path' in config.yaml")
+        print("See app.py docstring for setup instructions.")
+        sys.exit(1)
+    google_client = GoogleAppClient.from_file(secrets_path)
 
 _FAVICON_URI = (
     "data:image/svg+xml,"
@@ -104,6 +116,19 @@ app, rt = fast_app(
 )
 app.router.redirect_slashes = False
 
+# --- Auth middleware ---
+
+if auth_provider == "local":
+    def _local_auth_before(req, sess):
+        if sess.get("auth"):
+            return
+        return RedirectResponse(f"{BASE_PREFIX}/local-login", status_code=303)
+
+    app.before.append(Beforeware(
+        _local_auth_before,
+        skip=[f"{BASE_PREFIX}/local-login.*", f"{BASE_PREFIX}/api/.*"],
+    ))
+
 
 @rt("/api/test-auth")
 def get(sess):
@@ -145,12 +170,12 @@ class MyAppOAuth(OAuth):
         super().__init__(app, cli, **kwargs)
 
     def get_auth(self, info, ident, session, state):
-        session["user_info"] = {
-            "email": info.get("email", ""),
-            "name": info.get("name", ""),
-            "picture": info.get("picture", ""),
-        }
-        logger.info("OAuth login: %s (%s)", info.get("email", ""), info.get("name", ""))
+        name = info.get("name", "")
+        email = info.get("email", "")
+        picture = info.get("picture", "")
+        session["user_info"] = {"email": email, "name": name, "picture": picture}
+        upsert_user(ident, display_name=name, picture_url=picture, email=email, auth_provider="google-oauth")
+        logger.info("OAuth login: %s (%s)", email, name)
         return RedirectResponse(f"{BASE_PREFIX}/", status_code=303)
 
     def redir_login(self, session):
@@ -168,9 +193,10 @@ class MyAppOAuth(OAuth):
         return self.redir_login(session)
 
 
-oauth = MyAppOAuth(app, google_client,
-    skip=[f"{BASE_PREFIX}{p}" for p in ("/api/test-auth", "/login", "/redirect")]
-)
+if auth_provider == "google-oauth":
+    oauth = MyAppOAuth(app, google_client,
+        skip=[f"{BASE_PREFIX}{p}" for p in ("/api/test-auth", "/login", "/redirect")]
+    )
 
 
 def create_test_session_cookie():
@@ -231,8 +257,6 @@ def get(auth, sess):
     )
 
 
-
-
 # Register score routes
 score_rt.to_app(app)
 
@@ -252,23 +276,225 @@ analytics_rt.to_app(app)
 configs_router.to_app(app)
 
 
-@rt("/login")
-def get(req):
-    login_url = oauth.login_link(req)
-    return Title("Login"), Container(
-        DivCentered(
-            Card(
-                Button(
-                    DivLAligned(UkIcon("logo-google"), P("Sign in with Google")),
-                    cls=ButtonT.primary,
-                    onclick=f"window.location.href='{login_url}'",
+# --- Auth-mode-specific routes ---
+
+if auth_provider == "local":
+
+    def _user_avatar_el(user: dict):
+        if user.get("picture_url"):
+            return Img(
+                src=user["picture_url"],
+                alt=user["display_name"],
+                cls="w-16 h-16 rounded-full object-cover mx-auto mb-2",
+                referrerpolicy="no-referrer",
+            )
+        return Div(UkIcon("user", ratio=2.5), cls="flex justify-center mb-2 text-muted-foreground")
+
+    def _create_user_form(error: str = ""):
+        return Form(
+            Div(
+                Label("Username", For="username", cls="text-sm font-medium"),
+                Input(
+                    id="username",
+                    name="username",
+                    placeholder="Enter a username",
+                    required=True,
+                    cls="mt-1",
+                    autofocus=True,
                 ),
-                header=(H3("Scrape Score Job Finder"), Subtitle("Sign in to continue")),
-                cls="max-w-sm",
+                P(error, cls="text-destructive text-sm mt-1") if error else None,
+                cls="mb-4",
             ),
-            cls="mt-20",
-        ),
+            Button("Create Account", cls=ButtonT.primary + " w-full", type="submit"),
+            action=f"{BASE_PREFIX}/local-login",
+            method="post",
+        )
+
+    @rt("/local-login")
+    def get(sess, error: str = ""):
+        users = get_all_users()
+        if not users:
+            content = Card(
+                _create_user_form(error),
+                header=(H3("Scrape Score Job Finder"), Subtitle("Create your account to get started")),
+                cls="max-w-sm w-full",
+            )
+        else:
+            user_cards = [
+                Form(
+                    Hidden(name="username", value=u["username"]),
+                    Button(
+                        _user_avatar_el(u),
+                        P(u["display_name"], cls="text-sm font-medium text-center"),
+                        cls="w-full p-4 hover:bg-accent rounded-lg border border-border cursor-pointer transition-colors",
+                        type="submit",
+                    ),
+                    action=f"{BASE_PREFIX}/local-login/select",
+                    method="post",
+                )
+                for u in users
+            ]
+            content = Card(
+                Div(*user_cards, cls="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6"),
+                Hr(cls="my-4"),
+                P("Or create a new account", cls="text-sm text-muted-foreground mb-3"),
+                _create_user_form(error),
+                header=(H3("Scrape Score Job Finder"), Subtitle("Select your account")),
+                cls="max-w-lg w-full",
+            )
+
+        return Title("Login"), Container(
+            DivCentered(content, cls="mt-20 px-4"),
+        )
+
+    @rt("/local-login")
+    def post(username: str, sess):
+        username = username.strip()
+        if not username:
+            return RedirectResponse(f"{BASE_PREFIX}/local-login?error=Username+cannot+be+empty", status_code=303)
+        upsert_user(username, display_name=username, picture_url="", email="", auth_provider="local")
+        sess["auth"] = username
+        sess["user_info"] = {"email": username, "name": username, "picture": ""}
+        logger.info("Local login: created/selected user %r", username)
+        return RedirectResponse(f"{BASE_PREFIX}/", status_code=303)
+
+    @rt("/local-login/select")
+    def post(username: str, sess):
+        user = get_user(username)
+        if not user:
+            return RedirectResponse(f"{BASE_PREFIX}/local-login", status_code=303)
+        sess["auth"] = username
+        sess["user_info"] = {
+            "email": user.get("email") or username,
+            "name": user.get("display_name") or username,
+            "picture": user.get("picture_url", ""),
+        }
+        logger.info("Local login: selected user %r", username)
+        return RedirectResponse(f"{BASE_PREFIX}/", status_code=303)
+
+    @rt("/logout")
+    def get(sess):
+        logger.info("Local logout: %r", sess.get("auth", "unknown"))
+        sess.pop("auth", None)
+        sess.pop("user_info", None)
+        return RedirectResponse(f"{BASE_PREFIX}/local-login", status_code=303)
+
+elif auth_provider == "google-oauth":
+
+    @rt("/login")
+    def get(req):
+        login_url = oauth.login_link(req)
+        return Title("Login"), Container(
+            DivCentered(
+                Card(
+                    Button(
+                        DivLAligned(UkIcon("logo-google"), P("Sign in with Google")),
+                        cls=ButtonT.primary,
+                        onclick=f"window.location.href='{login_url}'",
+                    ),
+                    header=(H3("Scrape Score Job Finder"), Subtitle("Sign in to continue")),
+                    cls="max-w-sm",
+                ),
+                cls="mt-20",
+            ),
+        )
+
+
+# --- Account editor (available in both auth modes) ---
+
+@rt("/account/")
+def get(auth, sess, saved: str = ""):
+    user = get_user(auth) or {}
+    user_info = sess.get("user_info", {})
+    picture = user.get("picture_url") or user_info.get("picture", "")
+
+    picture_el = (
+        Img(
+            src=picture,
+            alt="Profile photo",
+            cls="w-20 h-20 rounded-full object-cover",
+            referrerpolicy="no-referrer",
+        )
+        if picture
+        else Div(UkIcon("user", ratio=3), cls="w-20 h-20 flex items-center justify-center rounded-full bg-muted text-muted-foreground")
     )
+
+    return NavigationLayout(
+        Container(
+            DivCentered(
+                Card(
+                    Form(
+                        DivCentered(picture_el, cls="mb-6"),
+                        P(
+                            f"Signed in via {user.get('auth_provider', 'local')}",
+                            cls="text-xs text-muted-foreground text-center mb-1",
+                        ),
+                        P(
+                            f"Member since {user.get('date_created', '')[:10]}",
+                            cls="text-xs text-muted-foreground text-center mb-6",
+                        ) if user.get("date_created") else None,
+                        P("Saved successfully.", cls="text-success text-sm mb-4 text-center") if saved else None,
+                        Div(
+                            Label("Display Name", For="display_name", cls="text-sm font-medium"),
+                            Input(
+                                id="display_name",
+                                name="display_name",
+                                value=user.get("display_name", ""),
+                                cls="mt-1",
+                            ),
+                            cls="mb-4",
+                        ),
+                        Div(
+                            Label("Notification Email", For="email", cls="text-sm font-medium"),
+                            Input(
+                                id="email",
+                                name="email",
+                                type="email",
+                                value=user.get("email", ""),
+                                placeholder="email for notifications (optional)",
+                                cls="mt-1",
+                            ),
+                            cls="mb-4",
+                        ),
+                        Div(
+                            Label("Notes", For="notes", cls="text-sm font-medium"),
+                            Textarea(
+                                user.get("notes", ""),
+                                id="notes",
+                                name="notes",
+                                rows=4,
+                                placeholder="Personal notes, bio, etc.",
+                                cls="mt-1 w-full",
+                            ),
+                            cls="mb-6",
+                        ),
+                        Button("Save", cls=ButtonT.primary + " w-full", type="submit"),
+                        action=f"{BASE_PREFIX}/account/",
+                        method="post",
+                    ),
+                    header=H3("Account"),
+                    cls="max-w-sm w-full",
+                ),
+                cls="mt-10 px-4",
+            ),
+        ),
+        title="Account",
+        current_path="/account/",
+        user_info=user_info,
+    )
+
+
+@rt("/account/")
+def post(auth, sess, display_name: str = "", email: str = "", notes: str = ""):
+    display_name = display_name.strip()
+    update_user_profile(auth, display_name=display_name, email=email.strip(), notes=notes.strip())
+    user_info = sess.get("user_info", {})
+    if display_name:
+        user_info["name"] = display_name
+    user_info["email"] = email.strip()
+    sess["user_info"] = user_info
+    logger.info("Account updated for %r: display_name=%r", auth, display_name)
+    return RedirectResponse(f"{BASE_PREFIX}/account/?saved=1", status_code=303)
 
 
 # Register profile routes

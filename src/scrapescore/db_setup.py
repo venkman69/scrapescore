@@ -220,6 +220,23 @@ def create_scraper_configs_table(cursor):
     logger.info("scraper_configs table created/verified")
 
 
+def create_users_table(cursor):
+    """Create the users table for unified user registry (local and OAuth users)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username      TEXT PRIMARY KEY,
+            display_name  TEXT NOT NULL DEFAULT '',
+            picture_url   TEXT NOT NULL DEFAULT '',
+            email         TEXT NOT NULL DEFAULT '',
+            notes         TEXT NOT NULL DEFAULT '',
+            theme         TEXT NOT NULL DEFAULT 'system',
+            auth_provider TEXT NOT NULL DEFAULT 'local',
+            date_created  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    logger.info("users table created/verified")
+
+
 def create_llm_usage_log_table(cursor):
     """Create the llm_usage_log table for tracking LLM API token usage."""
     cursor.execute("""
@@ -244,6 +261,41 @@ def create_llm_usage_log_table(cursor):
         ON llm_usage_log(timestamp DESC)
     """)
     logger.info("idx_llm_usage_log_timestamp index created/verified")
+
+
+def ensure_users_table(db_path: Path = None, auth_provider: str = "google-oauth") -> None:
+    """Ensure the users table exists and backfill local users from existing owning_user data.
+
+    Idempotent — safe to call at every app startup. The backfill only runs in
+    local auth mode and uses INSERT OR IGNORE, so existing rows are never overwritten.
+    """
+    if db_path is None:
+        db_path = get_db_path()
+    if not db_path.exists():
+        return
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    cursor = conn.cursor()
+    create_users_table(cursor)
+
+    add_column_if_not_exists(cursor, 'users', 'notes', "TEXT NOT NULL DEFAULT ''")
+
+    if auth_provider == "local":
+        cursor.execute("""
+            INSERT OR IGNORE INTO users (username, display_name, auth_provider)
+            SELECT owning_user, owning_user, 'local'
+            FROM (
+                SELECT DISTINCT owning_user FROM job_profiles  WHERE owning_user != ''
+                UNION
+                SELECT DISTINCT owning_user FROM scraper_configs WHERE owning_user != ''
+            )
+        """)
+        migrated = cursor.rowcount
+        if migrated > 0:
+            logger.info("Backfilled %d local user(s) into users table from existing data", migrated)
+
+    conn.commit()
+    conn.close()
 
 
 def setup_database(db_path: Path = None) -> sqlite3.Connection:
@@ -280,6 +332,7 @@ def setup_database(db_path: Path = None) -> sqlite3.Connection:
     create_scraping_logs_table(cursor)
     create_scraper_configs_table(cursor)
     create_llm_usage_log_table(cursor)
+    create_users_table(cursor)
 
     conn.commit()
 
@@ -320,6 +373,7 @@ def verify_database(db_path: Path = None) -> bool:
             "scraping_logs",
             "scraper_configs",
             "llm_usage_log",
+            "users",
         ]
         for table in tables_to_check:
             cursor.execute(
@@ -379,6 +433,7 @@ def main(
             "scraping_logs",
             "scraper_configs",
             "llm_usage_log",
+            "users",
         ]:
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
             count = cursor.fetchone()[0]

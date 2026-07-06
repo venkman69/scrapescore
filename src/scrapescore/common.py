@@ -106,6 +106,7 @@ def _avatar_dropdown(user_info: dict):
         trigger = UkIcon("user", cls="w-8 h-8 cursor-pointer")
 
     dropdown_items = [
+        ("Account", "/account/", "user-cog"),
         ("Profiles", "/profiles/", "user"),
         ("Config", "/config/", "settings"),
         ("Help", "/help", "help-circle"),

@@ -11,6 +11,94 @@ from datetime import datetime, timedelta
 from scrapescore.db_setup import get_db_connection
 
 
+# ---------------------------------------------------------------------------
+# User registry (local auth + OAuth)
+# ---------------------------------------------------------------------------
+
+def upsert_user(username: str, display_name: str, picture_url: str, email: str, auth_provider: str) -> None:
+    """Insert or update a user record.
+
+    On conflict, refreshes display_name and picture_url (managed by the auth provider).
+    Email is only written if the existing row has no email set, preserving any
+    user-edited notification address from subsequent OAuth logins.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO users (username, display_name, picture_url, email, auth_provider)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(username) DO UPDATE SET
+            display_name = excluded.display_name,
+            picture_url  = excluded.picture_url,
+            email = CASE WHEN users.email = '' THEN excluded.email ELSE users.email END
+        """,
+        (username, display_name, picture_url, email, auth_provider),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_users() -> list[dict]:
+    """Return all users ordered by display_name (used by the local-mode picker)."""
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users ORDER BY display_name")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_local_users() -> list[dict]:
+    """Return only local-auth users ordered by display_name."""
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM users WHERE auth_provider = 'local' ORDER BY display_name"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_user(username: str) -> dict | None:
+    """Return a single user record by username."""
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def local_user_exists(username: str) -> bool:
+    """Return True if a local-auth user with this username exists."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM users WHERE username = ? AND auth_provider = 'local'",
+        (username,),
+    )
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+
+def update_user_profile(username: str, display_name: str, email: str, notes: str) -> None:
+    """Update user-editable profile fields."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET display_name=?, email=?, notes=? WHERE username=?",
+        (display_name, email, notes, username),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_profiles_for_user(owning_user: str) -> list[dict]:
     """Get all profiles belonging to a user."""
     conn = get_db_connection()

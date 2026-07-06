@@ -3,6 +3,9 @@ redis:
   port: 7777
   db: 0
 
+auth:
+  provider: "local"   # "local" or "google-oauth"
+
 server:
   port: 8507
   base_url_prefix: "/scrapescore"   # e.g. "/scrapescore" for reverse-proxy deployments

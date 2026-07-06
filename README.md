@@ -51,7 +51,7 @@ Modify `config.yaml` to your spec. Key items:
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → Credentials → Create OAuth 2.0 Client ID
 2. Application type: **Web application**
 3. Add authorised redirect URI: `http://localhost:8507/scrapescore/redirect`
-4. Download the JSON file and save it to the default location: `./work/job_finder/client_secret.json`
+4. Download the JSON file and save it to the default location: `./work/job_finder/client_secrets.json`
 5. If you chose a different location then set the path in `config.yaml`:
    ```yaml
    google_oauth_secrets_path: ./work/job_finder/client_secret.json
