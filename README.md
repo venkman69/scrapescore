@@ -34,8 +34,8 @@ Set `auth.provider` in `config.yaml`:
 
 ```yaml
 auth:
-  provider: "local"        # no-password user picker (recommended for personal use)
-  # provider: "google-oauth"   # Google OAuth 2.0 sign-in
+  provider: "google-oauth"  # default — Google OAuth 2.0 sign-in
+  # provider: "local"       # no-password user picker (recommended for personal use)
 ```
 
 **`local` mode** — a simple user picker is shown at login. The first time there are no users you are prompted to create one (just type a username). Subsequent visits show a grid of user cards; click yours to enter. No passwords, no OAuth setup required.
