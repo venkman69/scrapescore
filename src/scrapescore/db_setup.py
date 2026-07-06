@@ -226,7 +226,6 @@ def create_users_table(cursor):
         CREATE TABLE IF NOT EXISTS users (
             username      TEXT PRIMARY KEY,
             display_name  TEXT NOT NULL DEFAULT '',
-            handle        TEXT UNIQUE DEFAULT NULL,
             picture_url   TEXT NOT NULL DEFAULT '',
             picture_blob  BLOB,
             email         TEXT NOT NULL DEFAULT '',
@@ -282,7 +281,6 @@ def ensure_users_table(db_path: Path = None, auth_provider: str = "google-oauth"
 
     add_column_if_not_exists(cursor, 'users', 'notes', "TEXT NOT NULL DEFAULT ''")
     add_column_if_not_exists(cursor, 'users', 'picture_blob', 'BLOB')
-    add_column_if_not_exists(cursor, 'users', 'handle', 'TEXT DEFAULT NULL')
 
     if auth_provider == "local":
         cursor.execute("""
