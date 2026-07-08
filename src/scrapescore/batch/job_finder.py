@@ -1,10 +1,13 @@
 import json
 import logging
+import multiprocessing as mp
+import os
+import queue
 import re
+import signal
 import sqlite3
 import traceback
 import uuid
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -31,6 +34,56 @@ logger = logging.getLogger(__name__)
 init_db = database_setup.setup_database
 
 _SCRAPER_PARAM_KEYS = ["workday_params", "oraclecloud_params", "eightfold_params", "usajobs_params"]
+
+
+def _scrape_jobs_worker(result_queue, scrape_kwargs, logs_dir):
+    """Run scrape_jobs in a child process and return its DataFrame via a Queue.
+
+    Runs in a killable subprocess because scrape_jobs can hang indefinitely inside a
+    thread (e.g. Playwright's sync teardown in the Google/ZipRecruiter scrapers), and a
+    thread cannot be cancelled — only a real OS process can be killed. The parent kills
+    this whole process tree on timeout.
+    """
+    # Own process group so the parent can kill the whole tree (incl. Playwright
+    # node/chromium descendants) on timeout without touching the parent's group.
+    try:
+        os.setsid()
+    except Exception:
+        pass
+    # Re-establish logging in the child: config_logger only runs under __main__, which
+    # the spawn start method does not enter. Without this the per-site scrape log lines
+    # would be lost.
+    try:
+        utils.config_logger("job_finder.log", logs_dir)
+    except Exception:
+        pass
+    try:
+        df = scrape_jobs(**scrape_kwargs)
+        result_queue.put(("ok", df))
+    except Exception as e:
+        result_queue.put(("error", repr(e)))
+
+
+def _kill_proc_tree(proc):
+    """SIGKILL the subprocess and its descendants, tolerating the setsid race."""
+    pid = proc.pid
+    if pid is None:
+        return
+    try:
+        # Only killpg if the child became its own group leader (setsid succeeded), so we
+        # never signal the parent's own process group.
+        if os.getpgid(pid) == pid:
+            os.killpg(pid, signal.SIGKILL)
+        else:
+            proc.kill()
+    except ProcessLookupError:
+        pass
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    proc.join(timeout=5)
 
 
 def _build_user_config(base_config: dict, owning_user: str, profile: dict) -> dict:
@@ -566,6 +619,9 @@ def main(
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Logs dir, passed to scrape subprocesses so their per-site logs reach job_finder.log.
+    logs_dir = Path(get_storage_dir_config("logs_dir"))
+
     logger.info(f"Initializing database at {db_path}")
     conn = init_db(db_path)
 
@@ -638,16 +694,44 @@ def main(
                         run_id=run_id,
                         job_finder_config=user_config,
                     )
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(scrape_jobs, **scrape_kwargs)
-                        try:
-                            jobs = future.result(timeout=scrape_timeout)
-                        except FuturesTimeoutError:
-                            logger.error(
-                                f"scrape_jobs timed out after {scrape_timeout}s for keyword '{keyword}' — skipping."
-                            )
-                            future.cancel()
-                            continue
+                    # Run scrape_jobs in a killable subprocess. A thread-based timeout
+                    # cannot stop a hung scrape (threads can't be cancelled), so on
+                    # timeout we SIGKILL the whole process tree — including any stuck
+                    # Playwright node/chromium drivers — and move on.
+                    ctx = mp.get_context("spawn")
+                    result_queue = ctx.Queue()
+                    proc = ctx.Process(
+                        target=_scrape_jobs_worker,
+                        args=(result_queue, scrape_kwargs, logs_dir),
+                        daemon=True,
+                    )
+                    proc.start()
+                    logger.info(
+                        f"Started scrape subprocess pid={proc.pid} for '{keyword}' "
+                        f"(timeout={scrape_timeout}s)"
+                    )
+                    try:
+                        status, payload = result_queue.get(timeout=scrape_timeout)
+                    except queue.Empty:
+                        logger.error(
+                            f"scrape_jobs timed out after {scrape_timeout}s for keyword "
+                            f"'{keyword}' (subprocess pid={proc.pid}); killing subprocess "
+                            f"tree and skipping."
+                        )
+                        _kill_proc_tree(proc)
+                        continue
+                    finally:
+                        # Never leave a child behind, even on the success path.
+                        proc.join(timeout=5)
+                        if proc.is_alive():
+                            _kill_proc_tree(proc)
+
+                    if status == "error":
+                        logger.error(
+                            f"scrape_jobs failed for '{keyword}': {payload} — skipping."
+                        )
+                        continue
+                    jobs = payload
 
                     logger.info(f"Found {len(jobs)} jobs for {keyword}")
 
