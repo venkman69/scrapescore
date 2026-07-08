@@ -626,7 +626,7 @@ def main(
                         f"{keyword} {user_config['location']} since yesterday"
                     )
                     results_wanted = config.get("scraper", {}).get("results_wanted", 20)
-                    scrape_timeout = config.get("scraper", {}).get("scrape_timeout", 300)
+                    scrape_timeout = config.get("scraper", {}).get("scrape_timeout", 30)
                     scrape_kwargs = dict(
                         site_name=user_config["site_names"],
                         search_term=keyword,
