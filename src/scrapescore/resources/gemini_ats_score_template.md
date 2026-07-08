@@ -22,9 +22,6 @@ Note that this is **separate** from clearance. It is a key decision point. For e
 - Convert travel to a percentage format (e.g., "up to 25%" → "25%", "occasional" → "10%")
 - If no travel mentioned, default to "0%"
 
-**Job Summary:**
-- Provide a succinct, one-sentence overview of the role's primary function and its place within the hiring organization
-
 **Scoring Weights:**
 - Keywords/Skills alignment: 60%
 - Seniority/Title alignment: 20%
@@ -35,13 +32,26 @@ Note that this is **separate** from clearance. It is a key decision point. For e
 
 **NO PROSE**: Do not include introductory or concluding text. Output ONLY the JSON block.
 
-**Reason**: Provide a human-readable explanation of the score, highlighting specific strengths and gaps found during the analysis.
-
 **Decision**: The system will calculate the decision based on:
 - ATS Score ≥ 80%: "Pass"
 - ATS Score 60-80%: "Conditional"
 - ATS Score < 60%: "Fail"
 - NOTE: Missing required clearance ALWAYS results in "Fail" regardless of score
+
+## FIELD LENGTH & TOKEN CONSTRAINTS (MANDATORY)
+
+You must strictly limit the generation length of all remaining string fields to respect our token budget:
+
+1. Text Snippet Captures:
+   - `clearance_assessment.detected_phrasing`: Extract ONLY the bare minimum phrase or sentence from the job description containing the requirement (e.g., "Must possess active TS/SCI"). Maximum 15 words.
+   - `job_requirements.detected_requirements_phrasing`: Extract ONLY the direct sentence showing the required experience (e.g., "7+ years of progressive experience"). Maximum 15 words.
+
+2. Assessment Explanations:
+   - `citizenship_assessment.reason`: Limit to exactly 1 short, definitive sentence explaining the compliance match or mismatch.
+
+3. Unified Evaluation & Recommendations:
+   - `reason`: This is your single centralized explanation field. Write exactly 2 to 3 sentences maximum summarizing the primary alignment strengths and the single most critical structural or operational tool gap. Do not use conversational filler or introductory statements.
+   - `strategic_pivots`: Provide a maximum of 3 highly actionable bullet points. Each point must be a single imperative sentence under 15 words (e.g., "Frame resume metrics around architectural design and compliance ownership.").
 
 ## Expected Output Format
 
@@ -57,20 +67,18 @@ class ATSScoreResult(BaseModel):
         "required_clearance_types": list[str],  # List of required clearance types
         "detected_phrasing": str,  # The exact phrasing from job description
         "eligibility_score": int,  # 0-100
-        "notes": str
     }}
     citizenship_assessment: {{
         "status": str,  # MUST be exactly: "Required", "Preferred", OR "Not Required"
                         # DO NOT use enum names like "CitizenshipStatus.NOT_REQUIRED"
         "meets_requirement": bool,  # true if candidate is US citizen and job requires it, OR if job doesn't require it
-        "reason": str  # Explanation of the citizenship assessment and how it affects eligibility
+        "reason": str  # Explanation of the citizenship assessment, eligibility, and impact on clearance requirements
     }}
     job_requirements: {{
         "years_of_experience_required": int,
         "travel_percentage": str,
         "detected_requirements_phrasing": str
     }}
-    job_summary: str  # One-sentence overview
     ats_score_estimate: {{
         "total_overall_score": int,  # 0-100
         "tier": str,  # "Top Match", "Strong Match", "Partial Match", "Low Match"
@@ -83,27 +91,23 @@ class ATSScoreResult(BaseModel):
             "score": int,  # 0-100
             "weight": 0.60,
             "top_matches": list[str],  # Matching keywords/skills
-            "missing_critical_terms": list[str],  # Missing critical terms
-            "analysis": str
+            "missing_critical_terms": list[str]  # Missing critical terms
         }},
         "seniority_alignment": {{
             "score": int,  # 0-100
             "weight": 0.20,
             "years_of_experience_detected": int,
-            "title_match_grade": str,  # "A", "B", "C"
-            "analysis": str
+            "title_match_grade": str  # "A", "B", "C"
         }},
         "impact_metrics": {{
             "score": int,  # 0-100
             "weight": 0.10,
-            "detected_anchors": list[str],  # Impact words found
-            "analysis": str
+            "detected_anchors": list[str]  # Impact words found
         }},
         "structural_parsability": {{
             "score": int,  # 0-100
             "weight": 0.10,
-            "format_risk": str,  # "None", "Low", "Medium", "High"
-            "analysis": str
+            "format_risk": str  # "None", "Low", "Medium", "High"
         }}
     }}
     strategic_pivots: list[str]  # Actionable recommendations
@@ -127,14 +131,12 @@ class ATSScoreResult(BaseModel):
         "status": "None Required",
         "required_clearance_types": [],
         "detected_phrasing": "No clearance requirements mentioned",
-        "eligibility_score": 100,
-        "notes": "No clearance required for this position"
+        "eligibility_score": 100
     }},
     "citizenship_assessment": {{
         "status": "Not Required",
         "meets_requirement": true,
-        "reason": "Job does not require US citizenship",
-        "impact_on_clearance": null
+        "reason": "Job does not require US citizenship"
     }},
     ...
 }}

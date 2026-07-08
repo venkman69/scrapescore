@@ -70,7 +70,7 @@ class JobDecision(BaseModel):
     decision_reason: str
 
 # ============================================================================
-# ATS Scoring Models (JIRA-093)
+# ATS Scoring Models (JIRA-093) - REFACTORED FOR TOKEN EFFICIENCY
 # ============================================================================
 class JobDescriptionToDetails(BaseModel):
     job_title: str
@@ -96,7 +96,7 @@ class ClearanceAssessment(BaseModel):
     required_clearance_types: list[str]  # List of required clearance types (e.g., ["Secret", "TS/SCI"])
     detected_phrasing: str  # The exact phrasing from the job description
     eligibility_score: int  # 0-100 score of candidate's clearance eligibility
-    notes: str  # Additional notes about clearance requirements
+    # REMOVED: notes (Redundant text block)
 
 
 class CitizenshipStatus(str, Enum):
@@ -111,7 +111,7 @@ class CitizenshipAssessment(BaseModel):
     status: CitizenshipStatus  # Enum: REQUIRED, PREFERRED, NOT_REQUIRED
     meets_requirement: bool  # True if candidate meets citizenship requirement
     reason: str  # Explanation of the citizenship assessment and how it affects eligibility
-    impact_on_clearance: str | None = None  # How citizenship affects clearance eligibility (e.g., "Eligible for 'Ability to Obtain'")
+    # REMOVED: impact_on_clearance (Can be combined into top-level reason or status logic)
 
 
 class JobRequirements(BaseModel):
@@ -127,7 +127,7 @@ class KeywordAlignment(BaseModel):
     weight: float  # 0.60 (60% weight in total score)
     top_matches: list[str]  # List of top matching keywords/skills
     missing_critical_terms: list[str]  # Critical terms missing from resume
-    analysis: str  # Analysis explanation
+    # REMOVED: analysis (Redundant prose text)
 
 
 class SeniorityAlignment(BaseModel):
@@ -136,7 +136,7 @@ class SeniorityAlignment(BaseModel):
     weight: float  # 0.20 (20% weight in total score)
     years_of_experience_detected: int  # Years of experience detected in resume
     title_match_grade: str  # "A", "B", "C" grade for title match
-    analysis: str  # Analysis explanation
+    # REMOVED: analysis (Redundant prose text)
 
 
 class ImpactMetrics(BaseModel):
@@ -144,7 +144,7 @@ class ImpactMetrics(BaseModel):
     score: int  # 0-100 score
     weight: float  # 0.10 (10% weight in total score)
     detected_anchors: list[str]  # Impact words like "increased", "reduced", "saved"
-    analysis: str  # Analysis explanation
+    # REMOVED: analysis (Redundant prose text)
 
 
 class StructuralParsability(BaseModel):
@@ -152,7 +152,7 @@ class StructuralParsability(BaseModel):
     score: int  # 0-100 score
     weight: float  # 0.10 (10% weight in total score)
     format_risk: str  # "None", "Low", "Medium", "High"
-    analysis: str  # Analysis explanation
+    # REMOVED: analysis (Redundant prose text)
 
 
 class ScoringBreakdown(BaseModel):
@@ -182,9 +182,9 @@ class ATSScoreResult(BaseModel):
     clearance_assessment: ClearanceAssessment
     citizenship_assessment: CitizenshipAssessment  # US Citizenship assessment
     job_requirements: JobRequirements
-    job_summary: str  # Succinct one-sentence overview of the role
+    # REMOVED: job_summary (User already has the full job description; provides low value here)
     ats_score_estimate: ATSScoreEstimate
-    reason: str  # Human-readable explanation of the score
+    reason: str  # Single, centralized text explanation of the results
     decision: str  # "Pass", "Conditional", "Fail"
     scoring_breakdown: ScoringBreakdown
     strategic_pivots: list[str]  # List of actionable recommendations

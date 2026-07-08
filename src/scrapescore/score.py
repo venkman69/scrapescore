@@ -647,7 +647,6 @@ def render_ats_score(result):
     tier = score_est.get("tier", "N/A")
     confidence = score_est.get("confidence_score", 0)
     reason = result.get("reason", "")
-    summary = result.get("job_summary", "")
     breakdown = result.get("scoring_breakdown", {})
 
     # Decision Panel — compact, single row
@@ -678,13 +677,6 @@ def render_ats_score(result):
             cls="flex items-start justify-between",
         ),
         cls=f"mb-4 border-l-4 {decision_border} bg-slate-50 dark:bg-slate-800",
-    )
-
-    # Job Summary
-    summary_card = Card(
-        H4("Job Summary"),
-        P(summary, cls="text-sm italic text-slate-700 dark:text-slate-300"),
-        cls="mb-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700",
     )
 
     # Scoring Breakdown — 2×2 grid matching v2 layout
@@ -741,7 +733,6 @@ def render_ats_score(result):
     return Div(
         H2("Analysis Results", cls="border-b pb-2 mb-4"),
         decision_panel,
-        summary_card,
         pivot_card,
         breakdown_grid,
         H3("Eligibility Checks", cls="mb-4"),
@@ -753,9 +744,7 @@ def render_ats_score(result):
 
 
 def _render_scoring_panel(title, data, icon, detail):
-    """Color-coded scoring card with score, weight, detail, and analysis."""
     score = data.get("score", 0)
-    analysis = data.get("analysis", "")
     weight = data.get("weight", 0)
 
     return Card(
@@ -767,14 +756,7 @@ def _render_scoring_panel(title, data, icon, detail):
                 cls="text-right",
             ),
         ),
-        Div(
-            detail,
-            P(
-                analysis,
-                cls="text-sm italic text-slate-600 dark:text-slate-400 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700",
-            ),
-            cls="mt-3",
-        ),
+        Div(detail, cls="mt-3"),
         cls=f"h-full {_score_border_cls(score)}",
     )
 
@@ -846,7 +828,6 @@ def _render_clearance_card(data):
     req_types = data.get("required_clearance_types", [])
     elig = data.get("eligibility_score", 0)
     phrasing = data.get("detected_phrasing", "")
-    notes = data.get("notes", "")
 
     if "Active" in status or "Required" in status:
         border = "border-l-4 border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20"
@@ -866,8 +847,7 @@ def _render_clearance_card(data):
     if elig > 0:
         details.append(P(f"Eligibility: {elig}/100", cls="text-sm"))
 
-    analysis_parts = [t for t in [phrasing, notes] if t]
-    analysis = " | ".join(analysis_parts)
+    analysis = phrasing
 
     return Card(
         DivFullySpaced(
@@ -890,7 +870,6 @@ def _render_citizenship_card(data):
     status = _clean_enum(data.get("status", "Unknown"))
     meets = data.get("meets_requirement", False)
     reason = data.get("reason", "")
-    impact = data.get("impact_on_clearance", "")
 
     if meets:
         border = "border-l-4 border-green-500 bg-green-50 dark:bg-green-900/20"
@@ -904,8 +883,7 @@ def _render_citizenship_card(data):
         P(Strong("Status: "), "Meets" if meets else "Does Not Meet", cls="text-sm"),
     ]
 
-    analysis_parts = [t for t in [reason, impact] if t]
-    analysis = " | ".join(analysis_parts)
+    analysis = reason
 
     return Card(
         DivFullySpaced(
