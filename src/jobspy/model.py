@@ -401,7 +401,9 @@ class Scraper(ABC):
         Args:
             run_id: Unique identifier for the job_finder run (groups all scrapes from one session)
             search_term: The search term/keyword used for scraping
-            jobs_found: Number of jobs found by this scraper
+            jobs_found: Number of jobs returned by this scraper (raw scraped count).
+                Note: job_finder reconciles this column post-save to the net-new jobs
+                actually inserted for the user (see _update_scraping_logs_net_new).
             site: Optional site-specific field (e.g., company name for OracleCloud)
             scrape_duration_seconds: How long the scrape took
             success: Whether the scrape succeeded (True) or failed (False)

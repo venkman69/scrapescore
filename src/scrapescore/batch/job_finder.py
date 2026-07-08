@@ -165,7 +165,7 @@ def reject_job_titles(title: str, config: dict) -> bool:
     return False
 
 
-def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tuple[int, int, int]:
+def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tuple[int, int, int, dict[str, int]]:
     cursor = conn.cursor()
     # Prepare data for insertion
     # Ensure all columns exist in the dataframe, if not, fill with valid empty values
@@ -200,6 +200,9 @@ def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tu
     saved_count = 0
     no_jd_skipped_count = 0
     job_exists_count = 0
+    # Net-new jobs actually inserted, keyed by scraper enum value (the df "site" column,
+    # e.g. "linkedin"/"workday" — same value stored in scraping_logs.scraper).
+    saved_by_scraper: dict[str, int] = {}
     for _, row in jobs_df.iterrows():
         # Handle potential None/NaN values
         row = row.fillna("")
@@ -270,6 +273,8 @@ def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tu
             ),
         )
         saved_count += 1
+        scraper_key = str(row["site"])
+        saved_by_scraper[scraper_key] = saved_by_scraper.get(scraper_key, 0) + 1
 
     conn.commit()
     logger.info(
@@ -278,7 +283,55 @@ def save_jobs(conn, jobs_df, owning_user: str = "", search_term: str = "") -> tu
         Jobs with no jd {no_jd_skipped_count}. 
         Jobs already in db {job_exists_count}."""
     )
-    return saved_count, no_jd_skipped_count, job_exists_count
+    return saved_count, no_jd_skipped_count, job_exists_count, saved_by_scraper
+
+
+def _update_scraping_logs_net_new(
+    conn, run_id: str, search_term: str, saved_by_scraper: dict[str, int]
+) -> None:
+    """Overwrite scraping_logs.jobs_found with net-new jobs saved (JIRA-095 follow-up).
+
+    log_scraping_activity() (inside the scrape subprocess) initially writes jobs_found as
+    the raw scraped count, before the per-user save/dedup runs. This reconciles it to the
+    number of jobs actually inserted into job_details for this user, per scraper. The
+    job_finder loop is sequential (per user, per keyword), so the only success=1 rows
+    matching (run_id, search_term) are the current scrape's rows.
+
+    Precision is per-scraper: for multi-site boards (Workday/Eightfold/Oracle) there are
+    several sub-site rows for one scraper; the aggregate is placed on the lowest-id row and
+    the rest set to 0 so the per-scraper sum stays exact (per-company is not tracked).
+
+    A telemetry update must never break a scrape run, so failures are logged and swallowed.
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, scraper FROM scraping_logs "
+            "WHERE run_id = ? AND search_term = ? AND success = 1 ORDER BY id",
+            (run_id, search_term),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return
+
+        # Group row ids by scraper (rows already ordered by id).
+        ids_by_scraper: dict[str, list[int]] = {}
+        for row_id, scraper in rows:
+            ids_by_scraper.setdefault(scraper, []).append(row_id)
+
+        updates: list[tuple[int, int]] = []
+        for scraper, ids in ids_by_scraper.items():
+            count = saved_by_scraper.get(scraper, 0)
+            # Aggregate on the lowest-id row, 0 on the rest → per-scraper sum stays exact.
+            for i, row_id in enumerate(ids):
+                updates.append((count if i == 0 else 0, row_id))
+
+        cursor.executemany(
+            "UPDATE scraping_logs SET jobs_found = ? WHERE id = ?", updates
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Failed to update scraping_logs net-new jobs_found: {e}")
 
 
 def update_security_clearance_adhoc(conn):
@@ -767,8 +820,13 @@ def main(
                             lambda x: score_map.get(x, "low")
                         )
 
-                        saved_jobs_count, no_jd_count, job_exists_count = save_jobs(
+                        saved_jobs_count, no_jd_count, job_exists_count, saved_by_scraper = save_jobs(
                             conn, jobs, owning_user, search_term=keyword
+                        )
+                        # Reconcile scraping_logs.jobs_found from raw scraped count to the
+                        # net-new jobs actually saved for this user.
+                        _update_scraping_logs_net_new(
+                            conn, run_id, keyword, saved_by_scraper
                         )
                         total_jobs_found += saved_jobs_count
                         jobs_with_no_jd += no_jd_count
