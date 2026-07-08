@@ -347,7 +347,7 @@ if auth_provider == "local":
         if not users:
             content = Card(
                 _create_user_form(error),
-                header=(H3("Scrape Score Job Finder"), Subtitle("Create your account to get started")),
+                header=(H3("ScrapeScore Job Finder"), Subtitle("Create your account to get started")),
                 cls="max-w-sm w-full",
             )
         else:
@@ -370,7 +370,7 @@ if auth_provider == "local":
                 Hr(cls="my-4"),
                 P("Or create a new account", cls="text-sm text-muted-foreground mb-3"),
                 _create_user_form(error),
-                header=(H3("Scrape Score Job Finder"), Subtitle("Select your account")),
+                header=(H3("ScrapeScore Job Finder"), Subtitle("Select your account")),
                 cls="max-w-lg w-full",
             )
 
@@ -423,7 +423,7 @@ elif auth_provider == "google-oauth":
                         cls=ButtonT.primary,
                         onclick=f"window.location.href='{login_url}'",
                     ),
-                    header=(H3("Scrape Score Job Finder"), Subtitle("Sign in to continue")),
+                    header=(H3("ScrapeScore Job Finder"), Subtitle("Sign in to continue")),
                     cls="max-w-sm",
                 ),
                 cls="mt-20",

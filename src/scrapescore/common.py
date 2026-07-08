@@ -145,7 +145,7 @@ def _avatar_dropdown(user_info: dict):
     )
 
 
-def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/", user_info=None):
+def NavigationLayout(content, title="Job Finder", current_path="/", user_info=None):
     """
     Unified layout with responsive navigation.
     Desktop: Top NavBar
@@ -178,7 +178,7 @@ def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/",
             for name, path, icon in nav_items
         ],
         _avatar_dropdown(user_info),
-        brand=H3("Scrape Score Job Finder", cls="m-0 text-foreground"),
+        brand=H3("ScrapeScore Job Finder", cls="m-0 text-foreground"),
         cls="hidden md:flex border-b bg-background",
         sticky=True,
     )
@@ -186,7 +186,7 @@ def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/",
     # Mobile Top Bar (Brand + toggle + avatar dropdown)
     mobile_top = Div(
         Div(
-            H3("Scrape Score Job Finder", cls="text-center py-3 m-0 text-foreground flex-1"),
+            H3("ScrapeScore Job Finder", cls="text-center py-3 m-0 text-foreground flex-1"),
             Div(_avatar_dropdown(user_info), cls="absolute right-3 top-1/2 -translate-y-1/2"),
             cls="relative flex items-center",
         ),
@@ -214,7 +214,7 @@ def NavigationLayout(content, title="Scrape Score Job Finder", current_path="/",
     content_list = list(content) if isinstance(content, (list, tuple)) else [content]
 
     return (
-        Title(title),
+        Title(f"ScrapeScore | {title}"),
         _HTMX_PREFIX_SCRIPT,
         _THEME_TOGGLE_SCRIPT,
         _TAB_STATE_SCRIPT,
