@@ -18,6 +18,7 @@ hours_old: 168 # 1 week
 
 scraper:
   results_wanted: 50
+  scrape_timeout: 300     # seconds before a stuck scrape_jobs call is aborted
 
 retention_days: 60
 
@@ -26,6 +27,7 @@ llm_provider:
   base_url: "https://api.deepseek.com/v1"
   model: "deepseek-chat"
   max_tokens: 4096
+  timeout: 180                # seconds before an OpenAI-compatible API call is aborted
 
 site_names:
   - "workday"

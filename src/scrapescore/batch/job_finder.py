@@ -4,6 +4,7 @@ import re
 import sqlite3
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -625,7 +626,8 @@ def main(
                         f"{keyword} {user_config['location']} since yesterday"
                     )
                     results_wanted = config.get("scraper", {}).get("results_wanted", 20)
-                    jobs = scrape_jobs(
+                    scrape_timeout = config.get("scraper", {}).get("scrape_timeout", 300)
+                    scrape_kwargs = dict(
                         site_name=user_config["site_names"],
                         search_term=keyword,
                         google_search_term=google_search_term,
@@ -636,6 +638,16 @@ def main(
                         run_id=run_id,
                         job_finder_config=user_config,
                     )
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(scrape_jobs, **scrape_kwargs)
+                        try:
+                            jobs = future.result(timeout=scrape_timeout)
+                        except FuturesTimeoutError:
+                            logger.error(
+                                f"scrape_jobs timed out after {scrape_timeout}s for keyword '{keyword}' — skipping."
+                            )
+                            future.cancel()
+                            continue
 
                     logger.info(f"Found {len(jobs)} jobs for {keyword}")
 

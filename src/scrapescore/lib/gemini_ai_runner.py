@@ -104,8 +104,9 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
     base_url = llm_cfg.get("base_url")
     llm_model = llm_cfg.get("model")
 
-    client = openai.OpenAI(api_key=api_key, base_url=base_url)
-    logger.info(f"Calling OpenAI-compatible API: {base_url} model={llm_model}")
+    api_timeout = llm_cfg.get("timeout", 180)
+    client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=api_timeout)
+    logger.info(f"Calling OpenAI-compatible API: {base_url} model={llm_model} timeout={api_timeout}s")
 
     if _CANDIDATE_SPLIT_MARKER in prompt_str and _USER_SPLIT_MARKER in prompt_str:
         # Three-part split: instructions | candidate profile | job data
