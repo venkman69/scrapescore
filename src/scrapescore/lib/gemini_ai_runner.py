@@ -156,7 +156,11 @@ def _run_openai_automation(prompt_str: str, model: Any, llm_cfg: dict) -> tuple[
 
     raw_text = response.choices[0].message.content
     if model:
-        return extract_and_validate_json(raw_text, model), usage_dict
+        try:
+            return extract_and_validate_json(raw_text, model), usage_dict
+        except Exception as e:
+            logger.error(f"Parse/validation failed after OpenAI API call: {type(e).__name__}: {e}")
+            return {"error": str(e)}, usage_dict
     return {"raw_text": raw_text}, usage_dict
 
 
