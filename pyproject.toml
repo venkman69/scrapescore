@@ -28,6 +28,7 @@ dependencies = [
     "tls-client>=1.0.1",
     "pydantic>=2.13.4",
     "openai>=2.44.0",
+    "python-json-logger>=4.1.0",
 ]
 
 [tool.setuptools]

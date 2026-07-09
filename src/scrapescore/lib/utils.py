@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 from dotenv import load_dotenv
 from markitdown import MarkItDown
+from pythonjsonlogger.json import JsonFormatter
 
 from scrapescore.lib.config import BASE_PREFIX, get_storage_dir_config
 from scrapescore.lib.downloader import get_markdown_from_url
@@ -36,10 +37,22 @@ class RelativePathFormatter(logging.Formatter):
         return super().format(record)
 
 
+class JsonRelativePathFormatter(JsonFormatter):
+    """JSON formatter that adds the same relative source path as RelativePathFormatter.
+
+    Emits one JSON object per record so the systemd journal (and downstream
+    Vector/Loki) can parse fields natively instead of regex-matching text lines.
+    """
+
+    def add_fields(self, log_data, record, message_dict):
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        record.relativepath = os.path.relpath(record.pathname, project_root)
+        super().add_fields(log_data, record, message_dict)
+
+
 def config_logger(log_file_name: str, log_file_dir: Path):
     log_file_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_file_dir / log_file_name
-    sys.stderr.write(f"Log file path: {log_file_path}\n")
 
     # Get the root logger
     root_logger = logging.getLogger()
@@ -61,11 +74,20 @@ def config_logger(log_file_name: str, log_file_dir: Path):
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    # Add console handler
+    # Add console handler (stderr -> systemd journal -> Vector/Loki). Emit JSON at
+    # DEBUG so the journal carries full, machine-parseable detail; the file handler
+    # above keeps the human-readable text format for local tailing.
+    json_formatter = JsonRelativePathFormatter(
+        "%(asctime)s %(levelname)s %(name)s %(relativepath)s %(funcName)s %(lineno)d %(message)s"
+    )
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(json_formatter)
+    console_handler.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
+
+    # Emit the breadcrumb through the configured handlers so it stays JSON on the
+    # console stream rather than polluting the journal with a raw stderr line.
+    logger.info("Log file path: %s", log_file_path)
 
 
 def make_work_dirs():
