@@ -1,3 +1,4 @@
+import contextvars
 import json
 import logging
 import os
@@ -19,6 +20,19 @@ from scrapescore.lib.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Current job_finder run id, used to tag LLM usage log lines so Loki/Grafana can group
+# per-run token usage. Set once at the start of a run via set_llm_run_id().
+_current_run_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "llm_run_id", default=""
+)
+
+
+def set_llm_run_id(run_id: str) -> None:
+    """Tag subsequent LLM usage log lines with this job_finder run id."""
+    _current_run_id.set(run_id or "")
+
+
 def extract_and_validate_json(response_text: str, model: Any) -> dict:
     """
     Extracts JSON from the response text and validates it against the provided Pydantic model.
@@ -195,6 +209,25 @@ def _log_usage(usage: dict, provider: str, model: str, call_type: str, duration_
         conn.close()
     except Exception as e:
         logger.warning(f"Failed to log LLM usage to DB: {e}")
+
+    # Emit one structured JSON log line (mirrors llm_usage_log fields, plus run_id) so the
+    # journald/Vector/Loki pipeline can group per-run token usage in Grafana by run_id.
+    logger.info(
+        "llm_usage",
+        extra={
+            "event": "llm_usage",
+            "run_id": _current_run_id.get(),
+            "provider": provider,
+            "model": model,
+            "call_type": call_type,
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+            "cache_hit_tokens": usage.get("cache_hit_tokens", 0),
+            "cache_miss_tokens": usage.get("cache_miss_tokens", 0),
+            "duration_ms": duration_ms,
+        },
+    )
 
 
 def run_gemini_automation(

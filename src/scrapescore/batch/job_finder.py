@@ -699,6 +699,13 @@ def main(
     logger.info(f"skip_scrape: {skip_scrape}")
     config = APP_CONFIG
 
+    # Generate the run id up front so every LLM usage log line for this run is tagged with
+    # it (including score_high_jobs, which runs even under --skip-scrape). Grafana/Loki
+    # groups per-run token usage by this run_id.
+    run_id = str(uuid.uuid4())
+    logger.info(f"Starting job finder run with ID: {run_id}")
+    gemini_ai_runner.set_llm_run_id(run_id)
+
     db_path = get_storage_dir_config("job_finder_db_path")
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -721,9 +728,6 @@ def main(
     total_jobs_found = 0
     jobs_with_no_jd = 0
     if not skip_scrape:
-        run_id = str(uuid.uuid4())
-        logger.info(f"Starting job finder run with ID: {run_id}")
-
         users = get_all_users_with_keywords()
         if not users:
             logger.warning(
