@@ -334,6 +334,37 @@ def _update_scraping_logs_net_new(
         logger.warning(f"Failed to update scraping_logs net-new jobs_found: {e}")
 
 
+def _mark_scrape_incomplete(
+    conn, run_id: str, search_term: str, since_id, reason: str
+) -> None:
+    """Mark this keyword's per-site scraping_logs rows failed when nothing was delivered.
+
+    The per-site rows are written *inside* the scrape subprocess as success=1 with a raw
+    jobs_found count, before the parent ever saves anything. If the subprocess is then
+    killed on timeout (or scrape_jobs raises), those jobs never reach save_jobs — yet the
+    rows still read success=1 with a positive count, so a total outage looks healthy on the
+    dashboard (exactly how the 30s-timeout regression hid itself). Rewrite the current
+    scrape's rows to success=0, jobs_found=0 with an error so telemetry reflects that no
+    jobs were actually delivered.
+
+    Scoped to rows inserted after `since_id` for this (run_id, search_term) so a prior
+    user's successful scrape of the same keyword in the same run is left untouched.
+    Best-effort: telemetry must never break a scrape run, so failures are swallowed.
+    """
+    if since_id is None:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE scraping_logs SET success = 0, jobs_found = 0, error_message = ? "
+            "WHERE id > ? AND run_id = ? AND search_term = ? AND success = 1",
+            (reason, since_id, run_id, search_term),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Failed to mark scrape incomplete in scraping_logs: {e}")
+
+
 def update_security_clearance_adhoc(conn):
     """
     Ad-hoc function to update security_clearance_required for existing records.
@@ -751,6 +782,14 @@ def main(
                     # cannot stop a hung scrape (threads can't be cancelled), so on
                     # timeout we SIGKILL the whole process tree — including any stuck
                     # Playwright node/chromium drivers — and move on.
+                    # Highest scraping_logs id before this scrape, so a timeout/error can
+                    # scope its cleanup to only the rows this subprocess is about to write.
+                    try:
+                        _c = conn.cursor()
+                        _c.execute("SELECT COALESCE(MAX(id), 0) FROM scraping_logs")
+                        pre_scrape_max_id = _c.fetchone()[0]
+                    except Exception:
+                        pre_scrape_max_id = None
                     ctx = mp.get_context("spawn")
                     result_queue = ctx.Queue()
                     proc = ctx.Process(
@@ -772,6 +811,15 @@ def main(
                             f"tree and skipping."
                         )
                         _kill_proc_tree(proc)
+                        # The subprocess wrote per-site success rows before being killed,
+                        # but nothing was saved — mark them failed so telemetry is honest.
+                        _mark_scrape_incomplete(
+                            conn,
+                            run_id,
+                            keyword,
+                            pre_scrape_max_id,
+                            f"scrape subprocess killed after {scrape_timeout}s timeout",
+                        )
                         continue
                     finally:
                         # Never leave a child behind, even on the success path.
@@ -782,6 +830,15 @@ def main(
                     if status == "error":
                         logger.error(
                             f"scrape_jobs failed for '{keyword}': {payload} — skipping."
+                        )
+                        # Any per-site success rows written before the failure delivered
+                        # nothing to save — mark them failed so telemetry is honest.
+                        _mark_scrape_incomplete(
+                            conn,
+                            run_id,
+                            keyword,
+                            pre_scrape_max_id,
+                            f"scrape_jobs failed: {payload}",
                         )
                         continue
                     jobs = payload

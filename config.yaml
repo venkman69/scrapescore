@@ -18,7 +18,12 @@ hours_old: 168 # 1 week
 
 scraper:
   results_wanted: 50
-  scrape_timeout: 30     # seconds before a stuck scrape_jobs call is aborted
+  scrape_timeout: 300    # seconds before a stuck scrape_jobs call is aborted.
+                         # A full multi-site scrape for one keyword routinely runs
+                         # well past 30s (OracleCloud paging, USAJobs description
+                         # fetches, LinkedIn/Indeed/Google/ZipRecruiter); 30s killed
+                         # every scrape before it could return. The killable subprocess
+                         # still bounds genuine hangs at this limit.
 
 retention_days: 60
 
