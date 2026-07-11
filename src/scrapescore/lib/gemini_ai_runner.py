@@ -286,22 +286,25 @@ def _accumulate_run_usage(usage: dict, call_type: str, duration_ms: int) -> None
 
 
 def emit_run_usage_summary() -> None:
-    """Emit one JSON log line summarizing this run's total LLM usage + call count."""
-    logger.info(
-        "llm_usage_summary",
-        extra={
-            "event": "llm_usage_summary",
-            "run_id": _current_run_id.get(),
-            "llm_call_count": _run_usage.get("call_count", 0),
-            "prompt_tokens": _run_usage.get("prompt_tokens", 0),
-            "completion_tokens": _run_usage.get("completion_tokens", 0),
-            "total_tokens": _run_usage.get("total_tokens", 0),
-            "cache_hit_tokens": _run_usage.get("cache_hit_tokens", 0),
-            "cache_miss_tokens": _run_usage.get("cache_miss_tokens", 0),
-            "duration_ms": _run_usage.get("duration_ms", 0),
-            "by_call_type": _run_usage.get("by_call_type", {}),
-        },
-    )
+    """Emit one summary log line with this run's total LLM usage + call count.
+
+    The full payload is folded into the message string so it shows in the plain-text
+    job_finder.log (whose formatter only renders %(message)s), while the same fields
+    also ride the JSON console stream as structured `extra` for Grafana/Loki.
+    """
+    fields = {
+        "event": "llm_usage_summary",
+        "run_id": _current_run_id.get(),
+        "llm_call_count": _run_usage.get("call_count", 0),
+        "prompt_tokens": _run_usage.get("prompt_tokens", 0),
+        "completion_tokens": _run_usage.get("completion_tokens", 0),
+        "total_tokens": _run_usage.get("total_tokens", 0),
+        "cache_hit_tokens": _run_usage.get("cache_hit_tokens", 0),
+        "cache_miss_tokens": _run_usage.get("cache_miss_tokens", 0),
+        "duration_ms": _run_usage.get("duration_ms", 0),
+        "by_call_type": _run_usage.get("by_call_type", {}),
+    }
+    logger.info("llm_usage_summary %s", json.dumps(fields), extra=fields)
 
 
 def run_gemini_automation(
