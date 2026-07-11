@@ -50,6 +50,17 @@ class JsonRelativePathFormatter(JsonFormatter):
         super().add_fields(log_data, record, message_dict)
 
 
+class EventPrefixFilter(logging.Filter):
+    """Pass only records whose `event` extra attribute starts with the given prefix."""
+
+    def __init__(self, prefix: str):
+        super().__init__()
+        self._prefix = prefix
+
+    def filter(self, record):
+        return getattr(record, "event", "").startswith(self._prefix)
+
+
 def config_logger(log_file_name: str, log_file_dir: Path):
     log_file_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_file_dir / log_file_name
@@ -84,6 +95,19 @@ def config_logger(log_file_name: str, log_file_dir: Path):
     console_handler.setFormatter(json_formatter)
     console_handler.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
+
+    # Dedicated JSON-lines file for LLM usage events (per-call `llm_usage` + per-run
+    # `llm_usage_summary`). The human-readable job_finder.log drops the token fields
+    # because its plain-text formatter only renders %(message)s; this handler keeps the
+    # full structured payload queryable from disk without journald. One JSON object per
+    # line; scoped to LLM usage events via the event-prefix filter.
+    usage_handler = logging.handlers.RotatingFileHandler(
+        log_file_dir / "llm_usage.jsonl", maxBytes=10 * 1024 * 1024, backupCount=3
+    )
+    usage_handler.setFormatter(json_formatter)
+    usage_handler.setLevel(logging.INFO)
+    usage_handler.addFilter(EventPrefixFilter("llm_usage"))
+    root_logger.addHandler(usage_handler)
 
     # Emit the breadcrumb through the configured handlers so it stays JSON on the
     # console stream rather than polluting the journal with a raw stderr line.
