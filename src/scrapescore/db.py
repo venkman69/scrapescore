@@ -1064,6 +1064,40 @@ def get_source_effectiveness() -> list[dict]:
     return result
 
 
+def get_llm_usage_by_run(call_type: str) -> list[dict]:
+    """
+    Per-run LLM token usage for a single call_type (e.g. 'ats_scoring',
+    'title_scoring'), aggregated by run_id and ordered oldest-first so the
+    result reads as a time series. Each row carries both the run totals and the
+    call_count needed to derive per-call averages. Rows logged before run_id was
+    persisted share an empty run_id and collapse into a single leading bucket.
+    """
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            run_id,
+            MIN(timestamp) AS started_at,
+            COUNT(*) AS call_count,
+            SUM(prompt_tokens) AS prompt_tokens,
+            SUM(completion_tokens) AS completion_tokens,
+            SUM(total_tokens) AS total_tokens,
+            SUM(cache_hit_tokens) AS cache_hit_tokens,
+            SUM(cache_miss_tokens) AS cache_miss_tokens
+        FROM llm_usage_log
+        WHERE call_type = ?
+        GROUP BY run_id
+        ORDER BY started_at ASC
+        """,
+        (call_type,),
+    )
+    result = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return result
+
+
 def get_applications_timeline(owning_user: str) -> list[dict]:
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row

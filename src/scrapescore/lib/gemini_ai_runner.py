@@ -215,11 +215,12 @@ def _log_usage(usage: dict, provider: str, model: str, call_type: str, duration_
         conn.execute(
             """
             INSERT INTO llm_usage_log
-                (provider, model, call_type, prompt_tokens, completion_tokens,
+                (run_id, provider, model, call_type, prompt_tokens, completion_tokens,
                  total_tokens, cache_hit_tokens, cache_miss_tokens, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                _current_run_id.get(),
                 provider,
                 model,
                 call_type,

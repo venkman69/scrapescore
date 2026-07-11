@@ -3,6 +3,7 @@ Analytics dashboard for job_score.
 All keyword data is sourced from job_details.search_term — no profile config dependency.
 """
 
+import json
 import logging
 
 from fasthtml.common import *
@@ -21,6 +22,7 @@ from .db import (
     get_job_funnel_stats,
     get_source_effectiveness,
     get_applications_timeline,
+    get_llm_usage_by_run,
 )
 
 
@@ -91,6 +93,139 @@ def _mobile_bar_row(label: str, pct_str: str, pct_val: float, bar_cls: str, acce
             ),
         ),
         cls="flex items-center gap-2",
+    )
+
+
+# ---------------------------------------------------------------------------
+# LLM usage over time (Chart.js line charts, grouped by run_id)
+# ---------------------------------------------------------------------------
+
+_CHARTJS_CDN = Script(src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js")
+
+# One color per token component; shared across all four charts so the eye can
+# track the same series between the ATS and title views.
+_LLM_SERIES = [
+    ("prompt_tokens",     "Prompt",     "#3b82f6"),
+    ("completion_tokens", "Completion", "#a855f7"),
+    ("cache_hit_tokens",  "Cache hit",  "#22c55e"),
+    ("cache_miss_tokens", "Cache miss", "#ef4444"),
+]
+
+
+def _llm_chart_data(rows: list[dict], mode: str) -> dict:
+    """Build a Chart.js {labels, datasets} payload from per-run usage rows.
+
+    mode='total' plots each run's summed tokens; mode='avg' divides those sums
+    by the run's call_count to show per-call efficiency.
+    """
+    labels = []
+    for r in rows:
+        # started_at is 'YYYY-MM-DD HH:MM:SS'; trim to the minute for a compact axis label.
+        started = (r.get("started_at") or "")[:16]
+        rid = r.get("run_id") or ""
+        # Empty run_id == legacy rows logged before run_id was persisted.
+        labels.append(started if rid else f"{started or 'legacy'} (pre-run_id)")
+
+    datasets = []
+    for field, label, color in _LLM_SERIES:
+        if mode == "avg":
+            data = [round((r.get(field) or 0) / (r.get("call_count") or 1), 1) for r in rows]
+        else:
+            data = [int(r.get(field) or 0) for r in rows]
+        datasets.append({"label": label, "data": data, "borderColor": color})
+
+    return {"labels": labels, "datasets": datasets}
+
+
+def _llm_chart_card(title: str, subtitle: str, canvas_id: str) -> FT:
+    return Card(
+        H3(title, cls="text-base font-semibold mb-0.5"),
+        P(subtitle, cls="text-xs text-muted-foreground mb-3"),
+        Div(Canvas(id=canvas_id), cls="relative", style="height:260px"),
+        cls="p-4 mb-0",
+    )
+
+
+def _llm_usage_section() -> FT:
+    ats = get_llm_usage_by_run("ats_scoring")
+    title = get_llm_usage_by_run("title_scoring")
+
+    if not ats and not title:
+        return Card(
+            H3("LLM Usage Over Time", cls="text-base font-semibold mb-1"),
+            P("No LLM usage recorded yet. Charts populate after the next scraper run.",
+              cls="text-sm text-muted-foreground"),
+            cls="p-4 mb-4",
+        )
+
+    charts = {
+        "llm-ats-total":   _llm_chart_data(ats,   "total"),
+        "llm-ats-avg":     _llm_chart_data(ats,   "avg"),
+        "llm-title-total": _llm_chart_data(title, "total"),
+        "llm-title-avg":   _llm_chart_data(title, "avg"),
+    }
+
+    data_script = Script(f"window.__LLM_CHARTS = {json.dumps(charts)};")
+
+    init = Script("""
+(function() {
+  var CHARTS = window.__LLM_CHARTS || {};
+  function build(id) {
+    var el = document.getElementById(id);
+    if (!el || !CHARTS[id]) return;
+    var cfg = CHARTS[id];
+    new Chart(el, {
+      type: 'line',
+      data: {
+        labels: cfg.labels,
+        datasets: cfg.datasets.map(function(d) {
+          return {
+            label: d.label, data: d.data,
+            borderColor: d.borderColor, backgroundColor: d.borderColor,
+            fill: false, tension: 0.3, borderWidth: 2, pointRadius: 3, spanGaps: true
+          };
+        })
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: {
+          y: { beginAtZero: true, ticks: { font: { size: 10 } } },
+          x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true } }
+        }
+      }
+    });
+  }
+  function init() { Object.keys(CHARTS).forEach(build); }
+  if (typeof Chart !== 'undefined') { init(); return; }
+  var tries = 0;
+  var iv = setInterval(function() {
+    if (typeof Chart !== 'undefined' || tries++ > 100) { clearInterval(iv); if (typeof Chart !== 'undefined') init(); }
+  }, 50);
+})();
+""")
+
+    return Div(
+        H2("LLM Usage Over Time", cls="text-lg font-bold mb-1"),
+        P("Token usage per scraper run (grouped by run_id), split by scoring type. "
+          "Totals show per-run volume; averages show per-call efficiency and cache-hit stability.",
+          cls="text-sm text-muted-foreground mb-3"),
+        Div(
+            _llm_chart_card("ATS Scoring — Run Totals",
+                            "Summed tokens per run", "llm-ats-total"),
+            _llm_chart_card("ATS Scoring — Per-Call Average",
+                            "Run totals ÷ number of calls", "llm-ats-avg"),
+            _llm_chart_card("Title Scoring — Run Totals",
+                            "Summed tokens per run", "llm-title-total"),
+            _llm_chart_card("Title Scoring — Per-Call Average",
+                            "Run totals ÷ number of calls", "llm-title-avg"),
+            cls="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start",
+        ),
+        _CHARTJS_CDN,
+        data_script,
+        init,
+        cls="mb-4",
     )
 
 
@@ -367,7 +502,8 @@ def get(auth, sess):
             breakdown_card,
             cls="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start",
         ),
-        Div(source_card, timeline_card, cls="grid grid-cols-1 md:grid-cols-2 gap-4 items-start"),
+        Div(source_card, timeline_card, cls="grid grid-cols-1 md:grid-cols-2 gap-4 items-start mb-4"),
+        _llm_usage_section(),
     )
 
     return NavigationLayout(

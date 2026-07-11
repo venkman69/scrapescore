@@ -244,6 +244,7 @@ def create_llm_usage_log_table(cursor):
         CREATE TABLE IF NOT EXISTS llm_usage_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            run_id TEXT DEFAULT '',
             provider TEXT NOT NULL,
             model TEXT NOT NULL,
             call_type TEXT DEFAULT '',
@@ -334,6 +335,7 @@ def setup_database(db_path: Path = None) -> sqlite3.Connection:
     create_scraping_logs_table(cursor)
     create_scraper_configs_table(cursor)
     create_llm_usage_log_table(cursor)
+    add_column_if_not_exists(cursor, 'llm_usage_log', 'run_id', "TEXT DEFAULT ''")
     create_users_table(cursor)
 
     conn.commit()
