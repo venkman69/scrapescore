@@ -918,6 +918,9 @@ def main(
     # Cleanup old job records (if configured)
     cleanup.cleanup_old_jobs(conn, config)
 
+    # Emit a single per-run rollup of LLM token usage + call count for this run_id.
+    gemini_ai_runner.emit_run_usage_summary()
+
     notifier.notify_status(
         f"Done. New jobs: {total_jobs_found}, No JD: {jobs_with_no_jd}"
     )

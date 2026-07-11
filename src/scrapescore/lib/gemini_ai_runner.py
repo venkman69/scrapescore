@@ -27,10 +27,36 @@ _current_run_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "llm_run_id", default=""
 )
 
+# In-process accumulator of this run's LLM token usage, summed across every _log_usage()
+# call so emit_run_usage_summary() can emit a single per-run rollup at the end of the run.
+# All usage-producing LLM calls happen in the main process, so a module-level dict suffices.
+_run_usage: dict = {}
+
+
+def _reset_run_usage() -> None:
+    """Clear the per-run LLM usage accumulator (called at the start of each run)."""
+    _run_usage.clear()
+    _run_usage.update(
+        {
+            "call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "cache_hit_tokens": 0,
+            "cache_miss_tokens": 0,
+            "duration_ms": 0,
+            "by_call_type": {},  # call_type -> same numeric fields incl. call_count
+        }
+    )
+
+
+_reset_run_usage()
+
 
 def set_llm_run_id(run_id: str) -> None:
     """Tag subsequent LLM usage log lines with this job_finder run id."""
     _current_run_id.set(run_id or "")
+    _reset_run_usage()
 
 
 def extract_and_validate_json(response_text: str, model: Any) -> dict:
@@ -226,6 +252,54 @@ def _log_usage(usage: dict, provider: str, model: str, call_type: str, duration_
             "cache_hit_tokens": usage.get("cache_hit_tokens", 0),
             "cache_miss_tokens": usage.get("cache_miss_tokens", 0),
             "duration_ms": duration_ms,
+        },
+    )
+
+    # Fold this call into the per-run accumulator for the end-of-run summary.
+    _accumulate_run_usage(usage, call_type, duration_ms)
+
+
+_TOKEN_FIELDS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cache_hit_tokens",
+    "cache_miss_tokens",
+)
+
+
+def _accumulate_run_usage(usage: dict, call_type: str, duration_ms: int) -> None:
+    """Add one call's usage into the grand totals and the per-call_type breakdown."""
+    _run_usage["call_count"] += 1
+    _run_usage["duration_ms"] += duration_ms
+    for field in _TOKEN_FIELDS:
+        _run_usage[field] += usage.get(field, 0)
+
+    bucket = _run_usage["by_call_type"].setdefault(
+        call_type or "",
+        {"call_count": 0, "duration_ms": 0, **{f: 0 for f in _TOKEN_FIELDS}},
+    )
+    bucket["call_count"] += 1
+    bucket["duration_ms"] += duration_ms
+    for field in _TOKEN_FIELDS:
+        bucket[field] += usage.get(field, 0)
+
+
+def emit_run_usage_summary() -> None:
+    """Emit one JSON log line summarizing this run's total LLM usage + call count."""
+    logger.info(
+        "llm_usage_summary",
+        extra={
+            "event": "llm_usage_summary",
+            "run_id": _current_run_id.get(),
+            "llm_call_count": _run_usage.get("call_count", 0),
+            "prompt_tokens": _run_usage.get("prompt_tokens", 0),
+            "completion_tokens": _run_usage.get("completion_tokens", 0),
+            "total_tokens": _run_usage.get("total_tokens", 0),
+            "cache_hit_tokens": _run_usage.get("cache_hit_tokens", 0),
+            "cache_miss_tokens": _run_usage.get("cache_miss_tokens", 0),
+            "duration_ms": _run_usage.get("duration_ms", 0),
+            "by_call_type": _run_usage.get("by_call_type", {}),
         },
     )
 
