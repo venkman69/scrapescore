@@ -266,5 +266,5 @@ class Google(Scraper):
 
             browser.close()
 
-        logger.info(f"*** Scraping Google Complete. Found {len(job_list)} jobs ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "google", "site": None, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)

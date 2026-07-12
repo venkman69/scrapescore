@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from jobspy.lib.downloader import download_job_from_linkedin
 
 import math
@@ -175,7 +176,7 @@ class LinkedIn(Scraper):
 
         job_list = job_list[: scraper_input.results_wanted]
 
-        logger.info(f"*** Scraping LinkedIn Completed. Found {len(job_list)} jobs for: {scraper_input.search_term} ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "linkedin", "site": None, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)
 
     def _process_job(

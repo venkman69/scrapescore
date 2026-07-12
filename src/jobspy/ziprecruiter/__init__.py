@@ -578,5 +578,5 @@ class ZipRecruiter(Scraper):
         finally:
             if browser:
                 browser.close()
-        logger.info(f"*** Scraping ZipRecruiter Completed. Found {len(job_list)} jobs for criteria: {scraper_input.search_term} ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "ziprecruiter", "site": None, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)

@@ -76,7 +76,7 @@ class Marriott(Scraper):
         except Exception as e:
             logger.error(f"Error scraping Marriott: {e}")
 
-        logger.info(f"*** Scraping Marriott Completed. Found {len(job_list)} jobs for criteria: {scraper_input.search_term} ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "marriott", "site": "marriott", "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)
 
     def _process_job_item(self, item) -> JobPost | None:

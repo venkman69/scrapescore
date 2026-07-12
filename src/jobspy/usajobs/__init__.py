@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 import logging
 
@@ -77,9 +78,7 @@ class USAJobs(Scraper):
             job = self._process_job(item)
             if job:
                 job_list.append(job)
-        logger.info(
-            f"*** Scraping USAJobs Completed. Found {len(job_list)} jobs for search term: {scraper_input.search_term} ***"
-        )
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "usajobs", "site": None, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)
 
     def _process_job(self, item: dict) -> JobPost | None:

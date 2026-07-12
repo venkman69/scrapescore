@@ -160,7 +160,7 @@ class OracleCloud(Scraper):
                 logger.error(f"Error scraping {company_name} page: {e}")
                 break
         
-        logger.info(f"*** Scraping OracleCloud Completed. Found {len(job_list)} jobs for {company_name} for criteria: {scraper_input.search_term} ***")
+        logger.info(_json.dumps({"event": "scrape_complete", "scraper": "oraclecloud", "site": company_name, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
 
         return job_list
 

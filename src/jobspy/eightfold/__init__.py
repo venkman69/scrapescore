@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -124,7 +125,7 @@ class EightFold(Scraper):
                 logger.error(f"Error searching {company_name}: {e}")
                 raise
 
-        logger.info(f"*** Scraped EightFold site: {site_name}. Found {len(job_list)} jobs ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "eightfold", "site": site_name, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
 
         return JobResponse(
             jobs=job_list[: scraper_input.results_wanted]

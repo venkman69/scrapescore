@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 import math
 from datetime import datetime
@@ -78,7 +79,7 @@ class Indeed(Scraper):
                 break
             job_list += jobs
             page += 1
-        logger.info(f"*** Scraping Indeed Completed. Found {len(job_list)} jobs for {scraper_input.search_term} ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "indeed", "site": None, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(
             jobs=job_list[
                 scraper_input.offset : scraper_input.offset

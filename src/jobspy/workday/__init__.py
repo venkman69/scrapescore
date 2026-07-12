@@ -131,7 +131,7 @@ class WorkDay(Scraper):
             if job_post:
                 job_list.append(job_post)
 
-        logger.info(f"*** Scraped Workday site: {site_name}. Found {len(job_list)} jobs ***")
+        logger.info(json.dumps({"event": "scrape_complete", "scraper": "workday", "site": site_name, "search_term": scraper_input.search_term, "jobs_found": len(job_list)}))
         return JobResponse(jobs=job_list)
 
     def _process_job(
