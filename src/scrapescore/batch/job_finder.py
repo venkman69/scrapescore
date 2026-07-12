@@ -564,7 +564,9 @@ def job_title_compatibility(
     if not valid_titles:
         return []
 
-    unique_titles = list(set(valid_titles))
+    # Sort for deterministic ordering so the {job_titles} portion of the prompt is
+    # stable across runs, letting DeepSeek prefix-cache into the title list.
+    unique_titles = sorted(set(valid_titles))
     logger.info(f"Analyzing compatibility for {len(unique_titles)} unique titles...")
 
     results = gemini_ai_runner.hr_title_analyzer_gemini(
