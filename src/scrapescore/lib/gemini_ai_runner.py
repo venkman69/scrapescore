@@ -497,6 +497,7 @@ def hr_title_analyzer_gemini(
     Returns:
         list[dict]: A list of job titles with their compatibility score.
     """
+    logger.info("title_scoring: submitting %d titles to LLM: %s", len(job_titles), job_titles)
     config = utils.read_resource_as_yaml("job_finder_config.yaml")
     gemini_template = utils.get_resource_file_path(
         config["gemini_title_vs_desired_role_template"]
