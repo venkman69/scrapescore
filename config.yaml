@@ -34,6 +34,13 @@ llm_provider:
   max_tokens: 4096
   timeout: 180                # seconds before an OpenAI-compatible API call is aborted
 
+title_score_cache:
+  enabled: true
+  retention_days: 90   # prune cached title rows older than this
+  # Exact-match cache: a title is reused only when the same user has this exact
+  # (normalized) title cached under this exact (normalized) desired role. Editing
+  # the desired role starts a fresh namespace and the cache re-warms.
+
 site_names:
   - "workday"
   - "oraclecloud"

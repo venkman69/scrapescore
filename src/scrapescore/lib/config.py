@@ -44,3 +44,12 @@ def get_storage_dir_config(dir_name: str) -> str:
     if not value:
         raise KeyError(f"Missing required config 'storage_dirs.{dir_name}' in config.yaml")
     return value
+
+
+def get_title_score_cache_config() -> dict:
+    """Return the title_score_cache config block with defaults applied."""
+    cfg = APP_CONFIG.get("title_score_cache", {}) or {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "retention_days": int(cfg.get("retention_days", 90)),
+    }

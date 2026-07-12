@@ -870,7 +870,7 @@ def post_score_title(job_id: int, profile_name: str = "", auth=None):
         return Alert("Job has no title to score.", cls=AlertT.error)
 
     try:
-        results = _job_finder.job_title_compatibility([title], profile["desired_role_description"])
+        results = _job_finder.job_title_compatibility([title], profile["desired_role_description"], user)
         if not results:
             return Alert("No result returned from scorer.", cls=AlertT.error)
         score = (results[0].get("score") or "").lower()

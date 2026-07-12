@@ -265,6 +265,55 @@ def create_llm_usage_log_table(cursor):
     logger.info("idx_llm_usage_log_timestamp index created/verified")
 
 
+def create_title_score_cache_table(cursor):
+    """Create the title_score_cache table: an exact-match cache of title scores.
+
+    A cached title score is keyed by (owning_user, normalized desired role,
+    normalized title) so it is reused only for the same user, same role, same title.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS title_score_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owning_user TEXT NOT NULL,
+            role_normalized TEXT NOT NULL,
+            title_normalized TEXT NOT NULL,
+            title_raw TEXT NOT NULL,
+            score TEXT NOT NULL,
+            source TEXT DEFAULT 'llm',
+            date_updated TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(owning_user, role_normalized, title_normalized)
+        )
+    """)
+    logger.info("title_score_cache table created/verified")
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_title_cache_lookup
+        ON title_score_cache(owning_user, role_normalized)
+    """)
+    logger.info("idx_title_cache_lookup index created/verified")
+
+
+def migrate_title_score_cache_schema(cursor):
+    """Drop older title_score_cache designs (and role_registry) so they recreate flat.
+
+    Earlier revisions used a role_key hash, then a role_registry + role_id with
+    embeddings. The current design is a flat exact-match table keyed by
+    (owning_user, role_normalized, title_normalized). If a prior schema is present
+    (no role_normalized column), drop it — the cache warms organically, so nothing
+    needs preserving.
+    """
+    cursor.execute("DROP TABLE IF EXISTS role_registry")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='title_score_cache'"
+    )
+    if cursor.fetchone() is None:
+        return
+    cols = {row[1] for row in cursor.execute("PRAGMA table_info(title_score_cache)").fetchall()}
+    if "role_normalized" not in cols:
+        logger.info("Dropping legacy title_score_cache (pre-exact-match schema)")
+        cursor.execute("DROP TABLE title_score_cache")
+
+
 def ensure_users_table(db_path: Path = None, auth_provider: str = "google-oauth") -> None:
     """Ensure the users table exists and backfill local users from existing owning_user data.
 
@@ -336,6 +385,8 @@ def setup_database(db_path: Path = None) -> sqlite3.Connection:
     create_scraper_configs_table(cursor)
     create_llm_usage_log_table(cursor)
     add_column_if_not_exists(cursor, 'llm_usage_log', 'run_id', "TEXT DEFAULT ''")
+    migrate_title_score_cache_schema(cursor)
+    create_title_score_cache_table(cursor)
     create_users_table(cursor)
 
     conn.commit()
@@ -377,6 +428,7 @@ def verify_database(db_path: Path = None) -> bool:
             "scraping_logs",
             "scraper_configs",
             "llm_usage_log",
+            "title_score_cache",
             "users",
         ]
         for table in tables_to_check:
@@ -437,6 +489,7 @@ def main(
             "scraping_logs",
             "scraper_configs",
             "llm_usage_log",
+            "title_score_cache",
             "users",
         ]:
             cursor.execute(f"SELECT COUNT(*) FROM {table}")

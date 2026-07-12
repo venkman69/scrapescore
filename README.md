@@ -125,6 +125,36 @@ Each run:
 
 ---
 
+## Title-score cache
+
+Title compatibility scoring is an LLM cost center — the same job titles recur on every scrape.
+To avoid paying for them repeatedly, scored titles are cached in the `title_score_cache` table and
+reused on an exact repeat.
+
+- **Scope**: a cached score is keyed by `(owning_user, normalized desired role, normalized title)`.
+  It is reused only for the *same user*, *same desired role*, and *same title* (case- and
+  whitespace-insensitive). This keeps each user's scoring isolated.
+- **Warming**: the cache fills organically as runs happen — the first time a title is scored under
+  a role it goes to the LLM and the result is stored; subsequent runs reuse it with no LLM call.
+- **Role edits**: editing your `desired_role_description` starts a fresh namespace (scores may
+  legitimately differ for a different role), so the cache re-warms after an edit.
+- **Cost visibility**: each run logs a `title_cache: N titles, X exact, Y llm` line so you can see
+  how many titles were served from cache versus sent to the LLM.
+
+It is exact-match by design — deliberately simple, with no extra ML dependencies. Configure it in
+`config.yaml`:
+
+```yaml
+title_score_cache:
+  enabled: true
+  retention_days: 90   # prune cached title rows older than this
+```
+
+Set `enabled: false` to bypass the cache entirely (every title is scored fresh). The
+`title_score_cache` table is created automatically by `db_setup`.
+
+---
+
 ## Account editor
 
 Click the avatar in the top-right navigation bar and choose **Account** to edit your profile:

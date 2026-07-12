@@ -22,7 +22,7 @@ from scrapescore.db import (
     get_all_users_with_scraper_configs,
     get_default_profile,
 )
-from scrapescore.lib import gemini_ai_runner, utils
+from scrapescore.lib import gemini_ai_runner, title_score_cache, utils
 from scrapescore.lib.config import APP_CONFIG, get_storage_dir_config
 from scrapescore.lib.models import ClearanceStatus
 from scrapescore.lib.systemd_notifier import SystemdNotifier
@@ -410,9 +410,11 @@ def update_compatibility_scores_adhoc(conn, config):
     logger.info(f"Found {len(rows)} jobs missing title compatibility score.")
     desired_role_description = config.get("desired_role_description", "")
 
-    # Extract all titles for analysis
+    # Extract all titles for analysis. This legacy adhoc path scores against a
+    # single config-level desired_role_description (not per-user), so it uses an
+    # isolated empty-user cache namespace that can't collide with real users.
     titles_to_analyze = [row[1] for row in rows]
-    results = job_title_compatibility(titles_to_analyze, desired_role_description)
+    results = job_title_compatibility(titles_to_analyze, desired_role_description, "")
 
     # Map results for batch update
     # results is a list[dict] returned by job_title_compatibility, or empty list on error
@@ -551,10 +553,13 @@ def score_jobs_batch(conn, config):
 
 
 def job_title_compatibility(
-    job_titles: list[str], desired_role_description: str
+    job_titles: list[str], desired_role_description: str, owning_user: str
 ) -> list[dict]:
     """
     Evaluate job titles compatibility with the desired role description.
+
+    Title scores are cached strictly per user (owning_user), so one user's cache
+    never resolves another user's titles.
     """
     if not job_titles:
         return []
@@ -569,11 +574,35 @@ def job_title_compatibility(
     unique_titles = sorted(set(valid_titles))
     logger.info(f"Analyzing compatibility for {len(unique_titles)} unique titles...")
 
-    results = gemini_ai_runner.hr_title_analyzer_gemini(
-        unique_titles, desired_role_description
+    # Resolve titles already scored for this user+role from the exact-match cache,
+    # sending only genuine misses to the LLM.
+    resolved, misses, stats = title_score_cache.resolve(
+        unique_titles, desired_role_description, owning_user
     )
 
-    return results
+    if misses:
+        llm_results = gemini_ai_runner.hr_title_analyzer_gemini(
+            misses, desired_role_description
+        )
+        llm_scores = {
+            res["job_title"]: res["score"]
+            for res in llm_results
+            if isinstance(res, dict) and "job_title" in res and "score" in res
+        }
+        resolved.update(llm_scores)
+        # Persist the freshly scored titles so future runs hit the cache.
+        title_score_cache.store(
+            desired_role_description, llm_scores, owning_user, source="llm"
+        )
+
+    logger.info(
+        "title_cache: %d titles, %d exact, %d llm",
+        stats["total"],
+        stats["exact"],
+        stats["llm"],
+    )
+
+    return [{"job_title": t, "score": s} for t, s in resolved.items()]
 
 
 def score_high_jobs(conn, config):
@@ -866,7 +895,7 @@ def main(
                         job_titles = jobs["title"].tolist()
                         try:
                             compatibility_results = job_title_compatibility(
-                                job_titles, desired_role_description
+                                job_titles, desired_role_description, owning_user
                             )
                             score_map = {
                                 res["job_title"]: res["score"]
@@ -919,6 +948,12 @@ def main(
 
     # Cleanup old job records (if configured)
     cleanup.cleanup_old_jobs(conn, config)
+
+    # Prune stale title-score cache rows (best effort).
+    if title_score_cache.is_enabled():
+        pruned = title_score_cache.prune()
+        if pruned:
+            logger.info("Pruned %d stale title_score_cache rows", pruned)
 
     # Emit a single per-run rollup of LLM token usage + call count for this run_id.
     gemini_ai_runner.emit_run_usage_summary()
