@@ -148,17 +148,22 @@ def _parse_jobs(page_source: str, search_query: str = "") -> list[dict]:
 
         token = card_id.replace("job-card-", "") if card_id.startswith("job-card-") else ""
 
-        h2 = card.find("h2")
-        if h2:
-            title = h2.get_text(strip=True)
+        # Prefer the title link's href as the job URL — it's a stable direct permalink.
+        # The lk-based search URL only works in a live search session context.
+        title_link = card.select_one(
+            "a[data-testid='job-title'], h2 a, .job_link a, a.title"
+        )
+        if title_link:
+            title = title_link.get_text(strip=True)
+            href = title_link.get("href", "")
+            job_url = href if href.startswith("http") else (f"{BASE_URL}{href}" if href else "")
         else:
-            a_title = card.select_one("a[data-testid='job-title'], .job_link, a.title")
-            title = a_title.get_text(strip=True) if a_title else ""
+            h2 = card.find("h2")
+            title = h2.get_text(strip=True) if h2 else ""
+            job_url = ""
 
         if not title:
             continue
-
-        job_url = f"{BASE_URL}/jobs-search?{urlencode({'search': search_query, 'lk': token})}" if token else ""
 
         company_el = (
             card.select_one("a[data-testid='job-card-company']")
@@ -190,17 +195,31 @@ def _parse_jobs(page_source: str, search_query: str = "") -> list[dict]:
     return jobs
 
 
-def _extract_description_from_pane(pane_html: str) -> str:
+def _extract_from_pane(pane_html: str) -> tuple[str, str]:
+    """Return (description_markdown, direct_job_url) from the right-pane HTML."""
     soup = BeautifulSoup(pane_html, "html.parser")
+
+    # Try to find the direct job permalink from the pane's title link or apply button
+    direct_url = ""
+    for a in soup.select("a[href*='/c/'], a[href*='/jobs/'], a[data-testid='job-url']"):
+        href = a.get("href", "")
+        if href:
+            direct_url = href if href.startswith("http") else f"{BASE_URL}{href}"
+            break
+
+    description = ""
     for h2 in soup.find_all("h2"):
         if "job description" in h2.get_text(strip=True).lower():
             sib = h2.find_next_sibling("div")
             if sib:
-                return convert_to_markdown(str(sib))
-    desc_div = soup.select_one('div[class*="whitespace-pre-line"]')
-    if desc_div:
-        return convert_to_markdown(str(desc_div))
-    return ""
+                description = convert_to_markdown(str(sib))
+                break
+    if not description:
+        desc_div = soup.select_one('div[class*="whitespace-pre-line"]')
+        if desc_div:
+            description = convert_to_markdown(str(desc_div))
+
+    return description, direct_url
 
 
 def _fetch_descriptions(driver: uc.Chrome, jobs: list[dict]) -> None:
@@ -224,8 +243,15 @@ def _fetch_descriptions(driver: uc.Chrome, jobs: list[dict]) -> None:
             WebDriverWait(driver, 12).until(lambda d: token in d.current_url)
             time.sleep(0.6)
             pane_el = driver.find_element(By.CSS_SELECTOR, DETAIL_PANE)
-            job["description"] = _extract_description_from_pane(pane_el.get_attribute("innerHTML"))
-            logger.debug(f"[{i+1}] {job['title'][:50]}: {len(job['description'])} chars")
+            description, direct_url = _extract_from_pane(pane_el.get_attribute("innerHTML"))
+            job["description"] = description
+            # Prefer a direct permalink from the pane; fall back to the search URL
+            # from driver.current_url (which at least has the correct lk and location).
+            if direct_url:
+                job["job_url"] = direct_url
+            elif not job.get("job_url"):
+                job["job_url"] = driver.current_url
+            logger.debug(f"[{i+1}] {job['title'][:50]}: {len(description)} chars | url={job['job_url'][:60]}")
         except TimeoutException:
             logger.warning(f"Timeout waiting for right pane: {job['title'][:50]}")
         except Exception as e:
