@@ -85,6 +85,16 @@ def config_logger(log_file_name: str, log_file_dir: Path):
     console_handler.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
 
+    # Quiet noisy third-party loggers whose DEBUG output includes full WebDriver
+    # HTTP response bodies (entire page HTML). Our own loggers stay at DEBUG.
+    for noisy in (
+        "selenium",
+        "selenium.webdriver.remote.remote_connection",
+        "urllib3",
+        "undetected_chromedriver",
+    ):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     # Emit the breadcrumb through the configured handlers so it stays JSON on the
     # console stream rather than polluting the journal with a raw stderr line.
     logger.info("Log file path: %s", log_file_path)
