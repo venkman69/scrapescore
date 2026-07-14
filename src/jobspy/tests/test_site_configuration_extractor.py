@@ -173,6 +173,15 @@ def test_oracle_url_param_filtering():
         f"Multi-value failed: {result}"
     )
 
+    # selectedCategoriesFacet is captured; parse_qs decodes %3B to ;
+    result = filter_oracle_url_params(
+        parse_qs("selectedCategoriesFacet=300000086251911%3B300000086144371&locationId=300000020700547&radius=25&radiusUnit=MI")
+    )
+    assert result.get("selectedCategoriesFacet") == "300000086251911;300000086144371", (
+        f"selectedCategoriesFacet wrong: {result.get('selectedCategoriesFacet')}"
+    )
+    assert result.get("radius") == "25", f"radius wrong: {result.get('radius')}"
+
     # Empty
     result = filter_oracle_url_params(parse_qs(""))
     assert result == {}, f"Empty failed: {result}"

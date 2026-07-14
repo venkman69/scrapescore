@@ -136,6 +136,7 @@ def _type_fields(config_type: str, config_json: dict | None = None) -> FT:
                 cls="flex items-center gap-3",
             ),
             _label_row("Limit", id="limit", value=str(cj.get("limit", ""))),
+            _label_row("Categories Facet", id="selectedCategoriesFacet", value=cj.get("selectedCategoriesFacet", "")),
             cls="space-y-2",
         )
 
@@ -288,6 +289,7 @@ def _config_form(config: dict | None = None) -> FT:
                     if (el('radiusUnit')) el('radiusUnit').value = config.radiusUnit || 'MI';
                     if (el('sortBy')) el('sortBy').value = config.sortBy || 'RELEVANCY';
                     if (el('limit')) el('limit').value = config.limit || '';
+                    if (el('selectedCategoriesFacet')) el('selectedCategoriesFacet').value = config.selectedCategoriesFacet || '';
                 } else if (configType === 'eightfold') {
                     const el = (id) => document.getElementById(id);
                     if (el('base_url')) el('base_url').value = config.base_url || '';
@@ -518,6 +520,7 @@ def post_save(
     radiusUnit: str = "MI",
     sortBy: str = "RELEVANCY",
     limit: str = "",
+    selectedCategoriesFacet: str = "",
     domain: str = "",
     location: str = "",
     extra_params: str = "",
@@ -592,6 +595,8 @@ def post_save(
             cj["sortBy"] = sortBy
         if limit:
             cj["limit"] = int(limit)
+        if selectedCategoriesFacet:
+            cj["selectedCategoriesFacet"] = selectedCategoriesFacet
     elif config_type == "eightfold":
         cj = {"company_name": company_name, "base_url": base_url}
         if domain:

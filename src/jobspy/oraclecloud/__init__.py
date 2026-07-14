@@ -109,17 +109,22 @@ class OracleCloud(Scraper):
             # build finder parameters for the Oracle Cloud jobs endpoint
 
             encoded_facets = (params.get("facetsList") or "").replace(";", "%3B")
+            radius = params.get("radius") or 25
+            radius_unit = params.get("radiusUnit") or "MI"
             params_list = [
                 f"siteNumber={params.get('siteNumber')}",
                 f"facetsList={encoded_facets}",
                 f"limit={limit}",
                 f"keyword={keyword}",
                 f"locationId={params.get('locationId')}",
-                f"radius={params.get('radius')}",
-                f"radiusUnit={params.get('radiusUnit')}",
+                f"radius={radius}",
+                f"radiusUnit={radius_unit}",
                 f"sortBy={params.get('sortBy')}",
                 f"offset={offset}",
             ]
+            cat_facet = params.get("selectedCategoriesFacet")
+            if cat_facet:
+                params_list.append(f"selectedCategoriesFacet={str(cat_facet).replace(';', '%3B')}")
             finder_val = f"findReqs;{','.join(params_list)}"
 
             url = f"{base_url}{jobs_endpoint}"
